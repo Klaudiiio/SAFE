@@ -1,0 +1,13 @@
+# Python
+.venv/
+.expo/
+backend/.venv/
+backend/__pycache__/
+backend/*.sqlite3
+backend/staticfiles/
+backend/.env
+
+# Node
+node_modules/
+dist/
+.vite/
