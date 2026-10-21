@@ -1,4 +1,6 @@
+import ipaddress
 import os
+import socket
 from pathlib import Path
 
 import dj_database_url
@@ -86,7 +88,8 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
-    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
+    "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework.authentication.SessionAuthentication"],
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
     ],
@@ -100,3 +103,23 @@ CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = [
     origin.strip() for origin in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",") if origin.strip()
 ]
+LOCAL_NETWORK_CSRF_ORIGINS = []
+if DEBUG:
+    CSRF_TRUSTED_ORIGINS.extend(["http://localhost:5173", "http://127.0.0.1:5173"])
+    local_ipv4_addresses = set()
+    for address_info in socket.getaddrinfo(
+        socket.gethostname(), None, socket.AF_INET, socket.SOCK_STREAM
+    ):
+        address = ipaddress.ip_address(address_info[4][0])
+        if address.is_private and not address.is_loopback and not address.is_link_local:
+            local_ipv4_addresses.add(str(address))
+    LOCAL_NETWORK_CSRF_ORIGINS = [
+        f"http://{address}:5173" for address in sorted(local_ipv4_addresses)
+    ]
+    CSRF_TRUSTED_ORIGINS.extend(LOCAL_NETWORK_CSRF_ORIGINS)
+
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SECURE = not DEBUG

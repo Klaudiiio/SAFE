@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Clock3, Home, RefreshCw, UserRound } from "lucide-react";
+import { AlertTriangle, Clock3, Home, LogOut, RefreshCw, ShieldCheck, UserRound } from "lucide-react";
+import type { AuthenticatedUser } from "./AuthScreen";
 
 export type AppTab = "home" | "history" | "account";
 
@@ -81,7 +82,7 @@ export function ReportHistory({ apiBaseUrl, refreshKey }: ReportHistoryProps) {
     setLoadState("loading");
     setErrorMessage("");
 
-    fetch(`${apiBaseUrl}/api/reports/`, { signal: controller.signal })
+    fetch(`${apiBaseUrl}/api/reports/`, { credentials: "include", signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error(`Could not load reports (${response.status}).`);
         return response.json();
@@ -196,48 +197,25 @@ export function ReportHistory({ apiBaseUrl, refreshKey }: ReportHistoryProps) {
   );
 }
 
-interface AccountProfile {
-  fullName: string;
-  email: string;
-  school: string;
-  role: string;
-  emergencyContact: string;
+interface AccountTabProps {
+  user: AuthenticatedUser;
+  onLogout: () => Promise<void>;
 }
 
-const EMPTY_PROFILE: AccountProfile = {
-  fullName: "",
-  email: "",
-  school: "",
-  role: "",
-  emergencyContact: "",
-};
+export function AccountTab({ user, onLogout }: AccountTabProps) {
+  const [logoutError, setLogoutError] = useState("");
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-export function AccountTab() {
-  const [profile, setProfile] = useState<AccountProfile>(EMPTY_PROFILE);
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    setLogoutError("");
     try {
-      const savedProfile = window.localStorage.getItem("safe-account-profile");
-      if (savedProfile) setProfile({ ...EMPTY_PROFILE, ...JSON.parse(savedProfile) });
-    } catch {
-      window.localStorage.removeItem("safe-account-profile");
+      await onLogout();
+    } catch (error) {
+      setLogoutError(error instanceof Error ? error.message : "Could not sign out.");
+      setIsLoggingOut(false);
     }
-  }, []);
-
-  const handleSave = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    window.localStorage.setItem("safe-account-profile", JSON.stringify(profile));
-    setSaved(true);
   };
-
-  const fields: { key: keyof AccountProfile; label: string; placeholder: string; type?: string }[] = [
-    { key: "fullName", label: "FULL NAME", placeholder: "Your name" },
-    { key: "email", label: "EMAIL", placeholder: "name@example.com", type: "email" },
-    { key: "school", label: "SCHOOL", placeholder: "School name" },
-    { key: "role", label: "ROLE", placeholder: "Student, staff, or responder" },
-    { key: "emergencyContact", label: "EMERGENCY CONTACT", placeholder: "Phone number", type: "tel" },
-  ];
 
   return (
     <section className="size-full flex flex-col" style={{ background: "#080A0F", fontFamily: "Inter, sans-serif" }}>
@@ -247,36 +225,45 @@ export function AccountTab() {
       </header>
 
       <div className="flex-1 overflow-y-auto px-5 py-5">
-        <form onSubmit={handleSave} className="mx-auto flex w-full max-w-xl flex-col gap-4">
-          {fields.map((field) => (
-            <label key={field.key} className="flex flex-col gap-2">
-              <span style={{ color: "#7A8FAD", fontFamily: "DM Mono, monospace", fontSize: "10px", letterSpacing: "0.08em" }}>
-                {field.label}
-              </span>
-              <input
-                type={field.type || "text"}
-                value={profile[field.key]}
-                placeholder={field.placeholder}
-                onChange={(event) => {
-                  setProfile((current) => ({ ...current, [field.key]: event.target.value }));
-                  setSaved(false);
-                }}
-                className="w-full rounded-xl px-3 py-3 outline-none"
-                style={{ background: "#0E1117", border: "1px solid rgba(255,255,255,0.1)", color: "#F0F4FF", fontSize: "14px" }}
-              />
-            </label>
-          ))}
-          <button
-            type="submit"
-            className="mt-2 rounded-xl px-4 py-3 font-semibold"
-            style={{ background: "#B91C1C", color: "#FFFFFF" }}
-          >
-            Save account information
-          </button>
-          <p role="status" style={{ color: saved ? "#22C55E" : "#7A8FAD", fontSize: "11px", textAlign: "center" }}>
-            {saved ? "Saved on this device." : "Profile details are stored on this device only. No account sign-in is configured."}
+        <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
+          <div className="flex items-center gap-3 rounded-xl p-4" style={{ background: "#0E1117", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full" style={{ background: "rgba(239,68,68,0.12)", color: "#FCA5A5" }}>
+              <UserRound size={21} />
+            </div>
+            <div className="min-w-0">
+              <p className="truncate" style={{ color: "#F0F4FF", fontSize: "16px", fontWeight: 700 }}>{user.display_name}</p>
+              <p className="truncate" style={{ color: "#7A8FAD", fontSize: "12px" }}>{user.email}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 rounded-xl p-4" style={{ background: "#0E1117", border: "1px solid rgba(34,197,94,0.2)" }}>
+            <ShieldCheck size={18} color="#22C55E" />
+            <div>
+              <p style={{ color: "#F0F4FF", fontSize: "13px", fontWeight: 600 }}>
+                {user.account_type === "student" ? "Student demo account" : "Visitor demo account"}
+              </p>
+              <p style={{ color: "#7A8FAD", fontSize: "11px", marginTop: "3px" }}>
+                Identity not verified
+              </p>
+            </div>
+          </div>
+
+          <p style={{ color: "#7A8FAD", fontSize: "11px", lineHeight: 1.5 }}>
+            Identity checks are currently disabled. This demo account has not been verified. Do not enter real personal or medical information.
           </p>
-        </form>
+
+          {logoutError && <p role="alert" style={{ color: "#FCA5A5", fontSize: "12px" }}>{logoutError}</p>}
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="mt-2 flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-semibold disabled:opacity-50"
+            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "#C8D6F0" }}
+          >
+            <LogOut size={16} />
+            {isLoggingOut ? "Signing out..." : "Sign out"}
+          </button>
+        </div>
       </div>
     </section>
   );

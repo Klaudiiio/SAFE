@@ -6,11 +6,13 @@ import { WebView } from 'react-native-webview';
 export default function App() {
   const [address, setAddress] = useState('http://192.168.0.108:5173');
   const [appUrl, setAppUrl] = useState(address);
+  const [reloadVersion, setReloadVersion] = useState(0);
 
   const loadApp = () => {
     const nextUrl = address.trim();
     if (!nextUrl) return;
     setAppUrl(nextUrl.startsWith('http://') || nextUrl.startsWith('https://') ? nextUrl : `http://${nextUrl}`);
+    setReloadVersion((version) => version + 1);
   };
 
   return (
@@ -38,7 +40,8 @@ export default function App() {
           </Pressable>
         </View>
         <WebView
-          key={appUrl}
+          key={`${appUrl}:${reloadVersion}`}
+          cacheEnabled={false}
           originWhitelist={['http://*', 'https://*']}
           source={{ uri: appUrl }}
           startInLoadingState

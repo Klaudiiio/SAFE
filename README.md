@@ -69,6 +69,25 @@ npm run dev:all
 
 This starts the Django API and the Vite frontend in separate terminals on your machine.
 
+## Demo sign-in
+
+The app now opens on a login screen. Demo signups work only while Django `DEBUG=True`.
+Use a fictional name, email such as `student@example.test`, and a demo password.
+Choose **Student** or **Visitor**; identity checks are temporarily disabled.
+
+Because this workspace is stored in OneDrive, start Expo with the workspace helper
+instead of running Expo directly inside `mobile/`:
+
+```powershell
+.\start-expo.ps1
+```
+
+The helper runs the wrapper from a local AppData folder to avoid Metro file-watcher
+crashes in OneDrive. Keep the Vite and Django terminals running as well.
+
+Sign-up is disabled when `DEBUG=False`. Accounts are not verified as USTP students or
+valid ID holders. Do not use real personal or medical information in this demo.
+
 ## For later deployment
 
 When you are ready for Render + Vercel:
