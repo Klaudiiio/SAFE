@@ -174,7 +174,7 @@ export function AuthScreen({ apiBaseUrl, onAuthenticated }: AuthScreenProps) {
           <div className="mb-8 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: "rgba(220,38,38,0.14)", border: "1px solid rgba(220,38,38,0.3)" }}>
             <ShieldCheck size={28} color="#EF4444" />
           </div>
-          <p style={{ color: "#EF4444", fontFamily: "DM Mono, monospace", fontSize: "11px", fontWeight: 700, letterSpacing: "0.16em" }}>SAFE:MEAS · DEMO ACCESS</p>
+          <p style={{ color: "#EF4444", fontFamily: "DM Mono, monospace", fontSize: "11px", fontWeight: 700, letterSpacing: "0.16em" }}>SAFE · DEMO ACCESS</p>
           <h1 className="mt-4 max-w-lg" style={{ fontSize: "clamp(36px, 4vw, 54px)", fontWeight: 800, lineHeight: 1.08, letterSpacing: "-0.04em" }}>
             A safer response starts here.
           </h1>
@@ -203,7 +203,7 @@ export function AuthScreen({ apiBaseUrl, onAuthenticated }: AuthScreenProps) {
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl" style={{ background: "rgba(220,38,38,0.14)", border: "1px solid rgba(220,38,38,0.3)" }}>
               <ShieldCheck size={24} color="#EF4444" />
             </div>
-            <p style={{ color: "#EF4444", fontFamily: "DM Mono, monospace", fontSize: "10px", fontWeight: 700, letterSpacing: "0.12em" }}>SAFE:MEAS · DEMO ACCESS</p>
+            <p style={{ color: "#EF4444", fontFamily: "DM Mono, monospace", fontSize: "10px", fontWeight: 700, letterSpacing: "0.12em" }}>SAFE · DEMO ACCESS</p>
           </header>
 
           <div className="rounded-3xl p-5 sm:p-7" style={{ background: "rgba(14,17,23,0.94)", border: "1px solid rgba(255,255,255,0.09)", boxShadow: "0 24px 80px rgba(0,0,0,0.32)" }}>

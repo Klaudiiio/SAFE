@@ -113,8 +113,13 @@ if DEBUG:
         address = ipaddress.ip_address(address_info[4][0])
         if address.is_private and not address.is_loopback and not address.is_link_local:
             local_ipv4_addresses.add(str(address))
+    for address in sorted(local_ipv4_addresses):
+        if address not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(address)
     LOCAL_NETWORK_CSRF_ORIGINS = [
-        f"http://{address}:5173" for address in sorted(local_ipv4_addresses)
+        f"http://{address}:{port}"
+        for address in sorted(local_ipv4_addresses)
+        for port in (5173, 8000, 8081)
     ]
     CSRF_TRUSTED_ORIGINS.extend(LOCAL_NETWORK_CSRF_ORIGINS)
 

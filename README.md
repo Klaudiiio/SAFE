@@ -38,7 +38,7 @@ cd backend
 python manage.py migrate
 ```
 
-### 4) Run the backend
+### 4) Run the backend for the web app
 
 ```bash
 cd backend
@@ -71,19 +71,45 @@ This starts the Django API and the Vite frontend in separate terminals on your m
 
 ## Demo sign-in
 
-The app now opens on a login screen. Demo signups work only while Django `DEBUG=True`.
+The web app opens on a login screen. Demo signups work only while Django `DEBUG=True`.
 Use a fictional name, email such as `student@example.test`, and a demo password.
 Choose **Student** or **Visitor**; identity checks are temporarily disabled.
 
-Because this workspace is stored in OneDrive, start Expo with the workspace helper
-instead of running Expo directly inside `mobile/`:
+### Run the native mobile app
+
+Expo runs the React Native app in `mobile/` directly. Vite is not required.
+
+In one terminal, start the API so your phone can reach it over your local network:
+
+```powershell
+npm run dev:api:lan
+```
+
+In another terminal:
+
+```powershell
+cd mobile
+npx expo start
+```
+
+The app automatically uses the Expo computer IP for the API address. If needed,
+edit the **Django API address** field in the app to your computer's local IP with
+`:8000`. Connect the phone and computer to the same network and allow Python
+through Windows Firewall when prompted. You do not need `npm run dev`.
+
+Because this workspace is stored in OneDrive, Metro file-watcher crashes may
+occur when running Expo directly. If that happens, use the workspace helper:
 
 ```powershell
 .\start-expo.ps1
 ```
 
-The helper runs the wrapper from a local AppData folder to avoid Metro file-watcher
-crashes in OneDrive. Keep the Vite and Django terminals running as well.
+The helper runs the native app from a local AppData folder to avoid Metro
+file-watcher crashes in OneDrive. Keep the Django API running separately.
+
+The facility status and response metrics in the mobile home screen are demo
+values. Quick-contact buttons open the phone app, but currently use fictional
+`555-01xx` numbers; replace them with verified clinic contacts before real use.
 
 Sign-up is disabled when `DEBUG=False`. Accounts are not verified as USTP students or
 valid ID holders. Do not use real personal or medical information in this demo.

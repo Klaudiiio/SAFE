@@ -49,7 +49,7 @@ export function Step1_Trigger({ onActivate }: Step1Props) {
           </div>
           <div>
             <p style={{ color: "#EF4444", fontFamily: "DM Mono, monospace", fontSize: "clamp(10px, 1.5vw, 13px)", fontWeight: 600, letterSpacing: "0.12em" }}>
-              SAFE:MEAS
+              SAFE
             </p>
             <p style={{ color: "#F0F4FF", fontSize: "clamp(12px, 1.8vw, 16px)", fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1 }}>
               Medical-Incident Emergency Alert System

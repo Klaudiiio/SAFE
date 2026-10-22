@@ -109,7 +109,7 @@ export function ReportHistory({ apiBaseUrl, refreshKey }: ReportHistoryProps) {
       >
         <div>
           <p style={{ color: "#EF4444", fontFamily: "DM Mono, monospace", fontSize: "10px", letterSpacing: "0.12em" }}>
-            SAFE:MEAS
+            SAFE
           </p>
           <h1 style={{ color: "#F0F4FF", fontSize: "20px", fontWeight: 700 }}>Report History</h1>
         </div>
@@ -220,7 +220,7 @@ export function AccountTab({ user, onLogout }: AccountTabProps) {
   return (
     <section className="size-full flex flex-col" style={{ background: "#080A0F", fontFamily: "Inter, sans-serif" }}>
       <header className="px-5 py-4" style={{ background: "#0A0C12", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-        <p style={{ color: "#EF4444", fontFamily: "DM Mono, monospace", fontSize: "10px", letterSpacing: "0.12em" }}>SAFE:MEAS</p>
+        <p style={{ color: "#EF4444", fontFamily: "DM Mono, monospace", fontSize: "10px", letterSpacing: "0.12em" }}>SAFE</p>
         <h1 style={{ color: "#F0F4FF", fontSize: "20px", fontWeight: 700 }}>Account Information</h1>
       </header>
 
