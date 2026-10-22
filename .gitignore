@@ -3,6 +3,8 @@
 .expo/
 backend/.venv/
 backend/__pycache__/
+__pycache__/
+*.py[cod]
 backend/*.sqlite3
 backend/staticfiles/
 backend/.env
