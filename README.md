@@ -5,6 +5,7 @@ This project is set up for local development first. You can run the app on your 
 This project contains:
 
 - a Vite + React emergency workflow front end in the root workspace
+- a separate staff-only React admin console in `admin/`
 - a Django API in the `backend/` directory
 - a Supabase-ready Postgres configuration for later production deployment
 
@@ -57,7 +58,38 @@ npm run dev
 Open:
 
 - Frontend: http://localhost:5173
+- Admin console: http://localhost:5173/admin/
 - Backend health: http://127.0.0.1:8000/api/health/
+
+### Admin console
+
+Create a Django staff account from the `backend/` directory:
+
+```powershell
+python manage.py createsuperuser
+```
+
+Open http://localhost:5173/admin/ and sign in with that account's username and
+password. The console provides staff-only incident review and response status/ETA
+updates, plus demo account verification and access controls. Admin API access is
+restricted to authenticated Django staff users. After signing in at `/admin/`,
+choose **Create staff account** on the overview or **Create admin account** in
+the sidebar to add another staff login. New accounts receive staff permissions
+only; only an existing administrator or staff member can create them, and the
+first staff account must be bootstrapped with `createsuperuser`. Admin membership
+is tracked in the `admin_accounts` database table linked to Django users;
+existing staff accounts are added by migration, and new staff accounts are
+recorded when created. Password hashes remain in Django's `auth_user` table.
+Regular user profiles and admin accounts store a `user_id` primary key, name,
+student ID, course, phone number, creation timestamp, username, and account type
+(`user_type`). New regular and admin account forms require name, student ID,
+course, and phone number. Passwords are hashed and managed only by Django's
+`auth_user` credential table; they are never duplicated or stored as plaintext in
+the profile tables. SAFE application tables use readable names: `user_accounts`
+for regular profiles, `admin_accounts` for staff accounts, and `emergency_reports`
+for reports. A migration renames the existing tables in place without deleting
+their records. Django's built-in `auth_user` and related authentication tables
+keep their framework-defined names.
 
 ### One-command local startup
 

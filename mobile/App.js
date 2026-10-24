@@ -131,12 +131,12 @@ function PrimaryButton({ title, onPress, disabled, color = COLORS.red }) {
   );
 }
 
-function TextField({ label, value, onChangeText, placeholder, secureTextEntry, keyboardType, multiline }) {
+function TextField({ label, value, onChangeText, placeholder, secureTextEntry, keyboardType, multiline, autoCapitalize }) {
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
       <TextInput
-        autoCapitalize={keyboardType === 'email-address' ? 'none' : 'sentences'}
+        autoCapitalize={autoCapitalize || (keyboardType === 'email-address' ? 'none' : 'sentences')}
         autoCorrect={false}
         keyboardType={keyboardType}
         multiline={multiline}
@@ -161,6 +161,10 @@ function App() {
   const [authMode, setAuthMode] = useState('login');
   const [accountType, setAccountType] = useState('student');
   const [displayName, setDisplayName] = useState('');
+  const [username, setUsername] = useState('');
+  const [studentId, setStudentId] = useState('');
+  const [course, setCourse] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
@@ -268,7 +272,23 @@ function App() {
     setAuthError('');
     const normalizedEmail = email.trim().toLowerCase();
     if (authMode === 'signup' && !displayName.trim()) {
-      setAuthError('Enter your display name.');
+      setAuthError('Enter your name.');
+      return;
+    }
+    if (authMode === 'signup' && !username.trim()) {
+      setAuthError('Enter a username.');
+      return;
+    }
+    if (authMode === 'signup' && !studentId.trim()) {
+      setAuthError('Enter your student ID.');
+      return;
+    }
+    if (authMode === 'signup' && !course.trim()) {
+      setAuthError('Enter your course.');
+      return;
+    }
+    if (authMode === 'signup' && !phoneNumber.trim()) {
+      setAuthError('Enter your phone number.');
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
@@ -288,6 +308,10 @@ function App() {
         ? { email: normalizedEmail, password }
         : {
             display_name: displayName.trim(),
+            username: username.trim(),
+            student_id: studentId.trim(),
+            course: course.trim(),
+            phone_number: phoneNumber.trim(),
             email: normalizedEmail,
             password,
             account_type: accountType,
@@ -431,7 +455,11 @@ function App() {
 
         {authMode === 'signup' ? (
           <>
-            <TextField label="Display name" value={displayName} onChangeText={setDisplayName} placeholder="Your name" />
+            <TextField label="Name" value={displayName} onChangeText={setDisplayName} placeholder="Your name" />
+            <TextField label="Username" value={username} onChangeText={setUsername} placeholder="Choose a username" autoCapitalize="none" />
+            <TextField label="Student ID" value={studentId} onChangeText={setStudentId} placeholder="Student ID" />
+            <TextField label="Course" value={course} onChangeText={setCourse} placeholder="Course or program" />
+            <TextField label="Phone number" value={phoneNumber} onChangeText={setPhoneNumber} placeholder="Phone number" keyboardType="phone-pad" />
             <Text style={styles.fieldLabel}>Account type</Text>
             <View style={styles.segment}>
               {['student', 'visitor'].map((type) => (

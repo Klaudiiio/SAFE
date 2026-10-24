@@ -5,6 +5,10 @@ export interface AuthenticatedUser {
   id: number;
   email: string;
   display_name: string;
+  student_id: string;
+  course: string;
+  phone_number: string;
+  username: string;
   account_type: "student" | "visitor";
   verification_status: string;
 }
@@ -61,6 +65,10 @@ export function AuthScreen({ apiBaseUrl, onAuthenticated }: AuthScreenProps) {
   const [mode, setMode] = useState<AuthMode>("login");
   const [accountType, setAccountType] = useState<AccountType>("student");
   const [displayName, setDisplayName] = useState("");
+  const [username, setUsername] = useState("");
+  const [studentId, setStudentId] = useState("");
+  const [course, setCourse] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [config, setConfig] = useState<DemoAuthConfig | null>(null);
@@ -89,7 +97,23 @@ export function AuthScreen({ apiBaseUrl, onAuthenticated }: AuthScreenProps) {
     setFormError("");
 
     if (mode === "signup" && !displayName.trim()) {
-      setFormError("Enter your display name to create the demo account.");
+      setFormError("Enter your name to create the demo account.");
+      return;
+    }
+    if (mode === "signup" && !username.trim()) {
+      setFormError("Enter a username to create the demo account.");
+      return;
+    }
+    if (mode === "signup" && !studentId.trim()) {
+      setFormError("Enter your student ID.");
+      return;
+    }
+    if (mode === "signup" && !course.trim()) {
+      setFormError("Enter your course.");
+      return;
+    }
+    if (mode === "signup" && !phoneNumber.trim()) {
+      setFormError("Enter your phone number.");
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
@@ -120,6 +144,10 @@ export function AuthScreen({ apiBaseUrl, onAuthenticated }: AuthScreenProps) {
         ? { email, password }
         : {
             display_name: displayName,
+            username,
+            student_id: studentId,
+            course,
+            phone_number: phoneNumber,
             email,
             password,
             account_type: accountType,
@@ -251,8 +279,24 @@ export function AuthScreen({ apiBaseUrl, onAuthenticated }: AuthScreenProps) {
                   </label>
 
                   <label className="flex flex-col gap-2">
-                    <span style={{ color: "#AAB8CE", fontSize: "12px", fontWeight: 600 }}>Fictional display name</span>
-                    <input required maxLength={100} autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Demo Student" className="rounded-xl px-3 py-3 outline-none" style={{ background: "#0E1117", border: "1px solid rgba(255,255,255,0.1)", color: "#F0F4FF" }} />
+                    <span style={{ color: "#AAB8CE", fontSize: "12px", fontWeight: 600 }}>Name</span>
+                    <input required maxLength={50} autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Your name" className="rounded-xl px-3 py-3 outline-none" style={{ background: "#0E1117", border: "1px solid rgba(255,255,255,0.1)", color: "#F0F4FF" }} />
+                  </label>
+                  <label className="flex flex-col gap-2">
+                    <span style={{ color: "#AAB8CE", fontSize: "12px", fontWeight: 600 }}>Username</span>
+                    <input required maxLength={150} autoCapitalize="none" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Choose a username" className="rounded-xl px-3 py-3 outline-none" style={{ background: "#0E1117", border: "1px solid rgba(255,255,255,0.1)", color: "#F0F4FF" }} />
+                  </label>
+                  <label className="flex flex-col gap-2">
+                    <span style={{ color: "#AAB8CE", fontSize: "12px", fontWeight: 600 }}>Student ID</span>
+                    <input required maxLength={100} autoComplete="off" value={studentId} onChange={(event) => setStudentId(event.target.value)} placeholder="Student ID" className="rounded-xl px-3 py-3 outline-none" style={{ background: "#0E1117", border: "1px solid rgba(255,255,255,0.1)", color: "#F0F4FF" }} />
+                  </label>
+                  <label className="flex flex-col gap-2">
+                    <span style={{ color: "#AAB8CE", fontSize: "12px", fontWeight: 600 }}>Course</span>
+                    <input required maxLength={100} autoComplete="organization-title" value={course} onChange={(event) => setCourse(event.target.value)} placeholder="Course or program" className="rounded-xl px-3 py-3 outline-none" style={{ background: "#0E1117", border: "1px solid rgba(255,255,255,0.1)", color: "#F0F4FF" }} />
+                  </label>
+                  <label className="flex flex-col gap-2">
+                    <span style={{ color: "#AAB8CE", fontSize: "12px", fontWeight: 600 }}>Phone number</span>
+                    <input required maxLength={20} type="tel" autoComplete="tel" value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} placeholder="Phone number" className="rounded-xl px-3 py-3 outline-none" style={{ background: "#0E1117", border: "1px solid rgba(255,255,255,0.1)", color: "#F0F4FF" }} />
                   </label>
                 </>
               )}
