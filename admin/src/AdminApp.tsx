@@ -2,11 +2,13 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, Check, ChevronDown,
   Clock3, FileText, LayoutDashboard, LoaderCircle, LogOut, MapPin, Menu,
-  RefreshCw, Search, Shield, ShieldCheck, Users, UserPlus, X,
+  RefreshCw, Search, Shield, ShieldCheck, Users, UserPlus, X, ClipboardList,
+  MapPinned, ListChecks, Pencil, Trash2, Plus,
+  Stethoscope,
 } from "lucide-react";
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) || "";
-type Page = "overview" | "reports" | "people" | "staff";
+type Page = "overview" | "reports" | "people" | "staff" | "responders" | "catalog" | "locations" | "activity";
 type ReportStatus = "submitted" | "acknowledged" | "in_progress" | "resolved" | "closed";
 type VerificationStatus = "demo_unverified" | "demo_verified" | "suspended";
 
@@ -54,6 +56,32 @@ interface AdminUser {
   username: string;
 }
 
+interface CatalogIncidentType {
+  id: number;
+  code: string;
+  incident_name: string;
+  priority_level: "urgent" | "minor";
+  guidance: string;
+}
+
+interface CatalogLocation {
+  id: number;
+  building: string;
+  room: string;
+  latitude: string | null;
+  longitude: string | null;
+}
+
+interface IncidentLog {
+  id: number;
+  incident_id: number;
+  incident_label: string;
+  admin_username: string;
+  action_time: string;
+  remarks: string;
+  event_type: string;
+}
+
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   if (options.body) headers.set("Content-Type", "application/json");
@@ -79,6 +107,7 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
     }
     throw new Error(message);
   }
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
@@ -259,7 +288,11 @@ function AdminApp() {
   const navItems = [
     { id: "overview" as const, label: "Overview", icon: LayoutDashboard },
     { id: "reports" as const, label: "Incident reports", icon: FileText },
+    { id: "catalog" as const, label: "Incident types", icon: ListChecks },
+    { id: "locations" as const, label: "Locations", icon: MapPinned },
+    { id: "activity" as const, label: "Activity log", icon: ClipboardList },
     { id: "people" as const, label: "Accounts", icon: Users },
+    { id: "responders" as const, label: "Clinic responders", icon: Stethoscope },
     { id: "staff" as const, label: "Create admin account", icon: UserPlus },
   ];
 
@@ -376,6 +409,10 @@ function AdminApp() {
             </>
           )}
 
+          {page === "catalog" && <IncidentTypesPage />}
+          {page === "locations" && <LocationsPage />}
+          {page === "activity" && <IncidentActivityPage />}
+
           {page === "people" && (
             <>
               <div className="page-heading"><div><div className="eyebrow">USER MANAGEMENT</div><h1>Accounts</h1><p>Review account types, verification, and access status.</p></div><span className="result-count">{accounts.length} accounts</span></div>
@@ -424,6 +461,7 @@ function AdminApp() {
               </section>
             </>
           )}
+          {page === "responders" && <RespondersPage />}
         </div>
       </main>
 
@@ -447,6 +485,301 @@ function AdminApp() {
         </section>
       </div>}
     </div>
+  );
+}
+
+interface ClinicResponder {
+  user_id: number;
+  name: string;
+  department: string;
+  contact_number: string;
+  availability_status: "available" | "unavailable" | "on_break";
+  username: string;
+  email: string;
+  is_active: boolean;
+}
+
+function RespondersPage() {
+  const [responders, setResponders] = useState<ClinicResponder[]>([]);
+  const [draft, setDraft] = useState({
+    username: "", name: "", email: "", department: "", contact_number: "", password: "",
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setResponders(await api<ClinicResponder[]>("/api/admin/responders/"));
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Could not load clinic responders.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const createResponder = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await api<ClinicResponder>("/api/admin/responders/", {
+        method: "POST",
+        body: JSON.stringify({
+          username: draft.username.trim(),
+          name: draft.name.trim(),
+          email: draft.email.trim(),
+          department: draft.department.trim(),
+          contact_number: draft.contact_number.trim(),
+          password: draft.password,
+        }),
+      });
+      setNotice(`Clinic responder "${result.username}" was created. Their account can sign in at /clinic-staff/.`);
+      setDraft({ username: "", name: "", email: "", department: "", contact_number: "", password: "" });
+      await load();
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "Could not create the responder account.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateResponder = async (account: ClinicResponder, updates: Partial<Pick<ClinicResponder, "availability_status" | "is_active">>) => {
+    setError("");
+    setNotice("");
+    try {
+      await api<ClinicResponder>(`/api/admin/responders/${account.user_id}/`, {
+        method: "PATCH",
+        body: JSON.stringify(updates),
+      });
+      await load();
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Could not update the responder.");
+    }
+  };
+
+  return (
+    <>
+      <div className="page-heading">
+        <div><div className="eyebrow">CLINIC ACCESS</div><h1>Clinic responders</h1><p>Create separate responder accounts and manage clinic access.</p></div>
+      </div>
+      {error && <div role="alert" className="error-banner"><AlertTriangle size={17} /><span>{error}</span><button aria-label="Dismiss error" onClick={() => setError("")}><X size={16} /></button></div>}
+      {notice && <div className="success-banner"><Check size={17} /><span>{notice}</span></div>}
+      <section className="panel signup-panel">
+        <div className="panel-title"><div className="panel-icon"><Stethoscope size={18} /></div><div><h2>Create clinic responder</h2><p>Responder accounts are separate from student and admin accounts.</p></div></div>
+        <form className="staff-form-grid" onSubmit={(event) => void createResponder(event)}>
+          <label>Full name<input required maxLength={50} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
+          <label>Username<input required maxLength={150} autoComplete="off" value={draft.username} onChange={(event) => setDraft({ ...draft, username: event.target.value })} /></label>
+          <label>Email<input type="email" required value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} /></label>
+          <label>Department<input required maxLength={100} value={draft.department} onChange={(event) => setDraft({ ...draft, department: event.target.value })} placeholder="e.g. Campus Clinic" /></label>
+          <label>Contact number<input required maxLength={20} value={draft.contact_number} onChange={(event) => setDraft({ ...draft, contact_number: event.target.value })} /></label>
+          <label>Password<input type="password" required autoComplete="new-password" value={draft.password} onChange={(event) => setDraft({ ...draft, password: event.target.value })} /></label>
+          <div className="staff-form-actions"><button className="primary-button" type="submit" disabled={saving}>{saving ? <LoaderCircle className="spin" size={16} /> : <Plus size={16} />} Create responder account</button></div>
+        </form>
+      </section>
+      <section className="panel table-panel">
+        <div className="panel-title"><div className="panel-icon"><Users size={18} /></div><div><h2>Responder accounts</h2><p>Only active accounts may access the clinic portal.</p></div><button className="icon-button" aria-label="Refresh responders" onClick={() => void load()}><RefreshCw className={loading ? "spin" : ""} size={16} /></button></div>
+        {loading ? <div className="empty-state">Loading responder accounts...</div> : responders.length === 0 ? <div className="empty-state">No clinic responders have been created yet.</div> : (
+          <div className="responder-table">
+            <div className="responder-row responder-header"><span>Responder</span><span>Department</span><span>Availability</span><span>Access</span></div>
+            {responders.map((account) => (
+              <div className="responder-row" key={account.user_id}>
+                <span className="responder-identity"><strong>{account.name}</strong><small>{account.username} · {account.email}</small><small>{account.contact_number}</small></span>
+                <span>{account.department}</span>
+                <select aria-label={`Availability for ${account.name}`} value={account.availability_status} onChange={(event) => void updateResponder(account, { availability_status: event.target.value as ClinicResponder["availability_status"] })}>
+                  <option value="available">Available</option><option value="on_break">On break</option><option value="unavailable">Unavailable</option>
+                </select>
+                <button className={`access-toggle ${account.is_active ? "enabled" : ""}`} onClick={() => void updateResponder(account, { is_active: !account.is_active })}>{account.is_active ? "Active" : "Disabled"}</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
+function IncidentTypesPage() {
+  const [types, setTypes] = useState<CatalogIncidentType[]>([]);
+  const [draft, setDraft] = useState({ code: "", incident_name: "", priority_level: "minor" as "urgent" | "minor", guidance: "" });
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingDraft, setEditingDraft] = useState(draft);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const loadTypes = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setTypes(await api<CatalogIncidentType[]>("/api/admin/incident-types/"));
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Could not load incident types.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void loadTypes(); }, [loadTypes]);
+
+  const saveType = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError("");
+    try {
+      if (editingId === null) {
+        await api("/api/admin/incident-types/", { method: "POST", body: JSON.stringify(draft) });
+        setDraft({ code: "", incident_name: "", priority_level: "minor", guidance: "" });
+      } else {
+        await api(`/api/admin/incident-types/${editingId}/`, { method: "PATCH", body: JSON.stringify(editingDraft) });
+        setEditingId(null);
+      }
+      await loadTypes();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not save incident type.");
+    }
+  };
+
+  const deleteType = async (type: CatalogIncidentType) => {
+    if (!window.confirm(`Delete incident type "${type.incident_name}"?`)) return;
+    setError("");
+    try {
+      await api<void>(`/api/admin/incident-types/${type.id}/`, { method: "DELETE" });
+      await loadTypes();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Could not delete incident type.");
+    }
+  };
+
+  return (
+    <>
+      <div className="page-heading"><div><div className="eyebrow">INCIDENT CONFIGURATION</div><h1>Incident types</h1><p>Manage the categories, urgency, and guidance shown in user reporting.</p></div><span className="result-count">{types.length} types</span></div>
+      {error && <div role="alert" className="error-banner"><AlertTriangle size={17} /><span>{error}</span></div>}
+      <section className="panel catalog-panel">
+        <div className="panel-heading"><div><h2>{editingId === null ? "Add incident type" : "Edit incident type"}</h2><p>Changes are shared by the web and mobile reporting flows.</p></div></div>
+        <form className="catalog-form" onSubmit={saveType}>
+          <label>Code<input className="catalog-input" value={editingId === null ? draft.code : editingDraft.code} onChange={(event) => editingId === null ? setDraft({ ...draft, code: event.target.value }) : setEditingDraft({ ...editingDraft, code: event.target.value })} required maxLength={80} /></label>
+          <label>Incident name<input className="catalog-input" value={editingId === null ? draft.incident_name : editingDraft.incident_name} onChange={(event) => editingId === null ? setDraft({ ...draft, incident_name: event.target.value }) : setEditingDraft({ ...editingDraft, incident_name: event.target.value })} required maxLength={50} /></label>
+          <label>Priority<select className="catalog-input" value={editingId === null ? draft.priority_level : editingDraft.priority_level} onChange={(event) => editingId === null ? setDraft({ ...draft, priority_level: event.target.value as "urgent" | "minor" }) : setEditingDraft({ ...editingDraft, priority_level: event.target.value as "urgent" | "minor" })}><option value="urgent">Urgent</option><option value="minor">Minor</option></select></label>
+          <label>Guidance<input className="catalog-input" value={editingId === null ? draft.guidance : editingDraft.guidance} onChange={(event) => editingId === null ? setDraft({ ...draft, guidance: event.target.value }) : setEditingDraft({ ...editingDraft, guidance: event.target.value })} maxLength={200} /></label>
+          <div className="catalog-form-actions"><button className="primary-button" type="submit">{editingId === null ? <><Plus size={15} /> Add type</> : <><Check size={15} /> Save changes</>}</button>{editingId !== null && <button className="secondary-button" type="button" onClick={() => setEditingId(null)}>Cancel</button>}</div>
+        </form>
+      </section>
+      <section className="panel table-panel catalog-table-panel">
+        <div className="table-scroll"><table><thead><tr><th>CODE</th><th>INCIDENT NAME</th><th>PRIORITY</th><th>GUIDANCE</th><th>ACTIONS</th></tr></thead>
+          <tbody>{types.map((type) => <tr key={type.id}><td className="muted-cell">{type.code}</td><td><b>{type.incident_name}</b></td><td><span className={`severity-badge ${type.priority_level}`}>{titleCase(type.priority_level)}</span></td><td className="muted-cell">{type.guidance || "—"}</td><td><div className="catalog-row-actions"><button className="icon-button" aria-label={`Edit ${type.incident_name}`} onClick={() => { setEditingId(type.id); setEditingDraft({ code: type.code, incident_name: type.incident_name, priority_level: type.priority_level, guidance: type.guidance }); }}><Pencil size={15} /></button><button className="icon-button danger-action" aria-label={`Delete ${type.incident_name}`} onClick={() => void deleteType(type)}><Trash2 size={15} /></button></div></td></tr>)}</tbody>
+        </table>{!loading && types.length === 0 && <EmptyState title="No incident types" description="Add an incident type to make it available for reporting." />}{loading && <div className="catalog-loading">Loading incident types...</div>}</div>
+      </section>
+    </>
+  );
+}
+
+function LocationsPage() {
+  const [locations, setLocations] = useState<CatalogLocation[]>([]);
+  const [draft, setDraft] = useState({ building: "", room: "", latitude: "", longitude: "" });
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingDraft, setEditingDraft] = useState(draft);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const loadLocations = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setLocations(await api<CatalogLocation[]>("/api/admin/locations/"));
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Could not load locations.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void loadLocations(); }, [loadLocations]);
+
+  const saveLocation = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError("");
+    const values = editingId === null ? draft : editingDraft;
+    const payload = {
+      building: values.building,
+      room: values.room,
+      latitude: values.latitude || null,
+      longitude: values.longitude || null,
+    };
+    try {
+      if (editingId === null) {
+        await api("/api/admin/locations/", { method: "POST", body: JSON.stringify(payload) });
+        setDraft({ building: "", room: "", latitude: "", longitude: "" });
+      } else {
+        await api(`/api/admin/locations/${editingId}/`, { method: "PATCH", body: JSON.stringify(payload) });
+        setEditingId(null);
+      }
+      await loadLocations();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not save location.");
+    }
+  };
+
+  const deleteLocation = async (location: CatalogLocation) => {
+    if (!window.confirm(`Delete location "${location.building}${location.room ? ` · ${location.room}` : ""}"?`)) return;
+    setError("");
+    try {
+      await api<void>(`/api/admin/locations/${location.id}/`, { method: "DELETE" });
+      await loadLocations();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Could not delete location.");
+    }
+  };
+
+  return (
+    <>
+      <div className="page-heading"><div><div className="eyebrow">CAMPUS CONFIGURATION</div><h1>Locations</h1><p>Manage manual building and room values. Coordinates remain optional.</p></div><span className="result-count">{locations.length} locations</span></div>
+      {error && <div role="alert" className="error-banner"><AlertTriangle size={17} /><span>{error}</span></div>}
+      <section className="panel catalog-panel">
+        <div className="panel-heading"><div><h2>{editingId === null ? "Add location" : "Edit location"}</h2><p>Latitude and longitude are optional and are not collected from users.</p></div></div>
+        <form className="catalog-form location-form" onSubmit={saveLocation}>
+          <label>Building<input className="catalog-input" value={editingId === null ? draft.building : editingDraft.building} onChange={(event) => editingId === null ? setDraft({ ...draft, building: event.target.value }) : setEditingDraft({ ...editingDraft, building: event.target.value })} required maxLength={50} /></label>
+          <label>Room / floor<input className="catalog-input" value={editingId === null ? draft.room : editingDraft.room} onChange={(event) => editingId === null ? setDraft({ ...draft, room: event.target.value }) : setEditingDraft({ ...editingDraft, room: event.target.value })} maxLength={100} /></label>
+          <label>Latitude (optional)<input className="catalog-input" type="number" step="any" value={editingId === null ? draft.latitude : editingDraft.latitude} onChange={(event) => editingId === null ? setDraft({ ...draft, latitude: event.target.value }) : setEditingDraft({ ...editingDraft, latitude: event.target.value })} /></label>
+          <label>Longitude (optional)<input className="catalog-input" type="number" step="any" value={editingId === null ? draft.longitude : editingDraft.longitude} onChange={(event) => editingId === null ? setDraft({ ...draft, longitude: event.target.value }) : setEditingDraft({ ...editingDraft, longitude: event.target.value })} /></label>
+          <div className="catalog-form-actions"><button className="primary-button" type="submit">{editingId === null ? <><Plus size={15} /> Add location</> : <><Check size={15} /> Save changes</>}</button>{editingId !== null && <button className="secondary-button" type="button" onClick={() => setEditingId(null)}>Cancel</button>}</div>
+        </form>
+      </section>
+      <section className="panel table-panel catalog-table-panel">
+        <div className="table-scroll"><table><thead><tr><th>BUILDING</th><th>ROOM / FLOOR</th><th>LATITUDE</th><th>LONGITUDE</th><th>ACTIONS</th></tr></thead>
+          <tbody>{locations.map((location) => <tr key={location.id}><td><b>{location.building}</b></td><td className="muted-cell">{location.room || "—"}</td><td className="muted-cell">{location.latitude || "—"}</td><td className="muted-cell">{location.longitude || "—"}</td><td><div className="catalog-row-actions"><button className="icon-button" aria-label={`Edit ${location.building}`} onClick={() => { setEditingId(location.id); setEditingDraft({ building: location.building, room: location.room, latitude: location.latitude || "", longitude: location.longitude || "" }); }}><Pencil size={15} /></button><button className="icon-button danger-action" aria-label={`Delete ${location.building}`} onClick={() => void deleteLocation(location)}><Trash2 size={15} /></button></div></td></tr>)}</tbody>
+        </table>{!loading && locations.length === 0 && <EmptyState title="No locations" description="Add a campus building or room to begin." />}{loading && <div className="catalog-loading">Loading locations...</div>}</div>
+      </section>
+    </>
+  );
+}
+
+function IncidentActivityPage() {
+  const [logs, setLogs] = useState<IncidentLog[]>([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api<IncidentLog[]>("/api/admin/incident-logs/")
+      .then(setLogs)
+      .catch((loadError: unknown) => setError(loadError instanceof Error ? loadError.message : "Could not load activity logs."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <>
+      <div className="page-heading"><div><div className="eyebrow">AUDIT TRAIL</div><h1>Incident activity</h1><p>Review incident submissions and administrator response updates.</p></div><span className="result-count">Latest {logs.length} events</span></div>
+      {error && <div role="alert" className="error-banner"><AlertTriangle size={17} /><span>{error}</span></div>}
+      <section className="panel table-panel">
+        <div className="table-scroll"><table><thead><tr><th>TIME</th><th>INCIDENT</th><th>EVENT</th><th>ADMIN</th><th>REMARKS</th></tr></thead>
+          <tbody>{logs.map((log) => <tr key={log.id}><td className="date-cell">{formatDate(log.action_time)}</td><td><b>{log.incident_label}</b><small className="activity-id">SAFE-{log.incident_id.toString().padStart(4, "0")}</small></td><td><span className="status-pill">{titleCase(log.event_type)}</span></td><td className="muted-cell">{log.admin_username || "User / system"}</td><td className="muted-cell">{log.remarks || "—"}</td></tr>)}</tbody>
+        </table>{!loading && logs.length === 0 && <EmptyState title="No activity yet" description="Incident submissions and admin updates will appear here." />}{loading && <div className="catalog-loading">Loading activity...</div>}</div>
+      </section>
+    </>
   );
 }
 

@@ -16,6 +16,7 @@ export default defineConfig({
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         admin: fileURLToPath(new URL('./admin/index.html', import.meta.url)),
+        clinicStaff: fileURLToPath(new URL('./clinic-staff/index.html', import.meta.url)),
       },
     },
   },

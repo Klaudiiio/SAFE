@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { AlertTriangle, Stethoscope, ChevronRight, ArrowLeft } from "lucide-react";
 
@@ -9,31 +9,12 @@ export interface IncidentType {
   severity: "urgent" | "minor";
 }
 
-const URGENT: IncidentType[] = [
-  { id: "cardiac", label: "Cardiac Arrest / Collapse", signs: "Unconscious, not breathing normally, no pulse", severity: "urgent" },
-  { id: "breathing", label: "Severe Difficulty Breathing", signs: "Asthma attack, choking, turning blue", severity: "urgent" },
-  { id: "seizure", label: "Seizure Lasting >5 Minutes", signs: "Repeated seizures or not waking up afterward", severity: "urgent" },
-  { id: "anaphylaxis", label: "Anaphylaxis (Severe Allergy)", signs: "Swollen throat, wheezing, collapse after food, sting, or medicine", severity: "urgent" },
-  { id: "bleeding", label: "Severe Bleeding", signs: "Blood soaking clothing or spurting from a wound", severity: "urgent" },
-  { id: "unconscious", label: "Unconscious / Unresponsive Student", signs: "Fainting that does not resolve quickly", severity: "urgent" },
-  { id: "stroke", label: "Suspected Stroke", signs: "Face drooping, arm weakness, speech difficulty", severity: "urgent" },
-  { id: "headneck", label: "Major Head or Neck Injury", signs: "Fall from height, sports collision, possible spinal injury", severity: "urgent" },
-  { id: "burns", label: "Severe Burns", signs: "Electrical burns, large-area burns, facial burns", severity: "urgent" },
-  { id: "poisoning", label: "Poisoning / Overdose", signs: "Ingesting chemicals, medications, or unknown substances", severity: "urgent" },
-];
-
-const MINOR: IncidentType[] = [
-  { id: "cuts", label: "Small Cuts or Abrasions", signs: "Clean and bandage", severity: "minor" },
-  { id: "sprain", label: "Minor Sprain or Strain", signs: "Rest, ice, compression", severity: "minor" },
-  { id: "dizziness", label: "Brief Dizziness", signs: "Hydration and observation", severity: "minor" },
-  { id: "fever", label: "Mild Fever", signs: "Clinic assessment", severity: "minor" },
-  { id: "headache", label: "Headache", signs: "Rest and evaluation", severity: "minor" },
-  { id: "stomach", label: "Stomachache / Nausea", signs: "Observe and hydrate", severity: "minor" },
-  { id: "nosebleed", label: "Nosebleed", signs: "First aid and monitoring", severity: "minor" },
-  { id: "rash", label: "Minor Allergic Rash", signs: "Monitor for worsening symptoms", severity: "minor" },
-  { id: "bruise", label: "Small Bruise", signs: "Ice pack and rest", severity: "minor" },
-  { id: "dehydration", label: "Mild Dehydration", signs: "Fluids and observation", severity: "minor" },
-];
+interface IncidentTypeResponse {
+  code: string;
+  incident_name: string;
+  priority_level: "urgent" | "minor";
+  guidance: string;
+}
 
 interface Step2Props {
   onSelect: (incident: IncidentType) => void;
@@ -43,7 +24,37 @@ interface Step2Props {
 export function Step2_Incident({ onSelect, onBack }: Step2Props) {
   const [tab, setTab] = useState<"urgent" | "minor">("urgent");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const list = tab === "urgent" ? URGENT : MINOR;
+  const [incidents, setIncidents] = useState<IncidentType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const apiBaseUrl = (import.meta.env.VITE_API_URL as string | undefined) || "";
+  const loadIncidentTypes = async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/incident-types/`);
+      if (!response.ok) throw new Error(`Could not load incident types (HTTP ${response.status}).`);
+      const types = await response.json() as IncidentTypeResponse[];
+      if (!Array.isArray(types)) throw new Error("The server returned an invalid incident type list.");
+      setIncidents(types.map((type) => ({
+        id: type.code,
+        label: type.incident_name,
+        signs: type.guidance,
+        severity: type.priority_level,
+      })));
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Could not load incident types.");
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => {
+    void loadIncidentTypes();
+  }, []);
+
+  const list = incidents.filter((incident) => incident.severity === tab);
+  const urgentCount = incidents.filter((incident) => incident.severity === "urgent").length;
+  const minorCount = incidents.filter((incident) => incident.severity === "minor").length;
 
   return (
     <div
@@ -111,7 +122,7 @@ export function Step2_Incident({ onSelect, onBack }: Step2Props) {
               className="px-1.5 py-0.5 rounded-md"
               style={{ background: tab === "urgent" ? "rgba(239,68,68,0.2)" : "rgba(255,255,255,0.06)", fontSize: "10px", fontFamily: "DM Mono, monospace" }}
             >
-              10
+              {urgentCount}
             </span>
           </button>
           <button
@@ -131,7 +142,7 @@ export function Step2_Incident({ onSelect, onBack }: Step2Props) {
               className="px-1.5 py-0.5 rounded-md"
               style={{ background: tab === "minor" ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.06)", fontSize: "10px", fontFamily: "DM Mono, monospace" }}
             >
-              10
+              {minorCount}
             </span>
           </button>
         </div>
@@ -150,6 +161,16 @@ export function Step2_Incident({ onSelect, onBack }: Step2Props) {
 
       {/* Incident grid */}
       <div className="flex-1 overflow-y-auto px-6 lg:px-10 pb-6">
+        {loadError ? (
+          <div role="alert" className="rounded-2xl p-5" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", color: "#F0F4FF" }}>
+            <p>{loadError}</p>
+            <button onClick={() => void loadIncidentTypes()} className="mt-3 rounded-lg px-3 py-2" style={{ background: "rgba(255,255,255,0.08)", color: "#F0F4FF" }}>Try again</button>
+          </div>
+        ) : loading ? (
+          <p role="status" style={{ color: "#7A8FAD" }}>Loading incident types...</p>
+        ) : list.length === 0 ? (
+          <p style={{ color: "#7A8FAD" }}>No {tab} incident types are currently available.</p>
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {list.map((incident, i) => {
             const isUrgent = incident.severity === "urgent";
@@ -202,6 +223,7 @@ export function Step2_Incident({ onSelect, onBack }: Step2Props) {
             );
           })}
         </div>
+        )}
       </div>
     </div>
   );

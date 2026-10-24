@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import Constants from 'expo-constants';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -27,29 +28,6 @@ const COLORS = {
   green: '#22C55E',
   teal: '#00D4AA',
 };
-
-const INCIDENTS = [
-  { id: 'cardiac', label: 'Cardiac Arrest / Collapse', signs: 'Unconscious, not breathing normally, no pulse', severity: 'urgent' },
-  { id: 'breathing', label: 'Severe Difficulty Breathing', signs: 'Asthma attack, choking, turning blue', severity: 'urgent' },
-  { id: 'seizure', label: 'Seizure Lasting >5 Minutes', signs: 'Repeated seizures or not waking up afterward', severity: 'urgent' },
-  { id: 'anaphylaxis', label: 'Anaphylaxis (Severe Allergy)', signs: 'Swollen throat, wheezing, or collapse after exposure', severity: 'urgent' },
-  { id: 'bleeding', label: 'Severe Bleeding', signs: 'Blood soaking clothing or spurting from a wound', severity: 'urgent' },
-  { id: 'unconscious', label: 'Unconscious / Unresponsive', signs: 'Fainting that does not resolve quickly', severity: 'urgent' },
-  { id: 'stroke', label: 'Suspected Stroke', signs: 'Face drooping, arm weakness, speech difficulty', severity: 'urgent' },
-  { id: 'headneck', label: 'Major Head or Neck Injury', signs: 'Fall, collision, or possible spinal injury', severity: 'urgent' },
-  { id: 'burns', label: 'Severe Burns', signs: 'Electrical, large-area, or facial burns', severity: 'urgent' },
-  { id: 'poisoning', label: 'Poisoning / Overdose', signs: 'Chemicals, medications, or unknown substances', severity: 'urgent' },
-  { id: 'cuts', label: 'Small Cuts or Abrasions', signs: 'Clean and bandage', severity: 'minor' },
-  { id: 'sprain', label: 'Minor Sprain or Strain', signs: 'Rest, ice, compression', severity: 'minor' },
-  { id: 'dizziness', label: 'Brief Dizziness', signs: 'Hydration and observation', severity: 'minor' },
-  { id: 'fever', label: 'Mild Fever', signs: 'Clinic assessment', severity: 'minor' },
-  { id: 'headache', label: 'Headache', signs: 'Rest and evaluation', severity: 'minor' },
-  { id: 'stomach', label: 'Stomachache / Nausea', signs: 'Observe and hydrate', severity: 'minor' },
-  { id: 'nosebleed', label: 'Nosebleed', signs: 'First aid and monitoring', severity: 'minor' },
-  { id: 'rash', label: 'Minor Allergic Rash', signs: 'Monitor for worsening symptoms', severity: 'minor' },
-  { id: 'bruise', label: 'Small Bruise', signs: 'Ice pack and rest', severity: 'minor' },
-  { id: 'dehydration', label: 'Mild Dehydration', signs: 'Fluids and observation', severity: 'minor' },
-];
 
 const FACILITY = {
   name: 'Manila Central',
@@ -173,22 +151,62 @@ function App() {
   const [step, setStep] = useState('trigger');
   const [incidentFilter, setIncidentFilter] = useState('urgent');
   const [incident, setIncident] = useState(null);
+  const [incidentTypes, setIncidentTypes] = useState([]);
+  const [incidentTypesLoading, setIncidentTypesLoading] = useState(false);
+  const [incidentTypesError, setIncidentTypesError] = useState('');
   const [building, setBuilding] = useState('');
   const [floor, setFloor] = useState('');
   const [description, setDescription] = useState('');
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [reports, setReports] = useState([]);
+  const [recentReports, setRecentReports] = useState([]);
+  const [historyView, setHistoryView] = useState('mine');
   const [historyError, setHistoryError] = useState('');
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyRefresh, setHistoryRefresh] = useState(0);
+  const [messageReportId, setMessageReportId] = useState(null);
+  const [caseMessages, setCaseMessages] = useState([]);
+  const [caseMessageDraft, setCaseMessageDraft] = useState('');
+  const [caseMessageError, setCaseMessageError] = useState('');
+  const [caseMessageBusy, setCaseMessageBusy] = useState(false);
   const [logoutError, setLogoutError] = useState('');
   const [callError, setCallError] = useState('');
+
+  const loadIncidentTypes = useCallback(async () => {
+    setIncidentTypesLoading(true);
+    setIncidentTypesError('');
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/incident-types/`);
+      const payload = await readResponse(response);
+      if (!response.ok) throw new Error(payload.detail || `Could not load incident types (HTTP ${response.status}).`);
+      if (!Array.isArray(payload)) throw new Error('The SAFE API returned an invalid incident type list.');
+      setIncidentTypes(payload.map((item) => ({
+        id: item.code,
+        label: item.incident_name,
+        signs: item.guidance,
+        severity: item.priority_level,
+      })));
+    } catch (error) {
+      setIncidentTypesError(errorMessage(error, 'Could not load incident types.'));
+    } finally {
+      setIncidentTypesLoading(false);
+    }
+  }, [apiBaseUrl]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setIncidentTypes([]);
+      setIncidentTypesError('');
+      return;
+    }
+    void loadIncidentTypes();
+  }, [loadIncidentTypes, user]);
 
   useEffect(() => {
     let active = true;
@@ -237,15 +255,18 @@ function App() {
     let active = true;
     setHistoryLoading(true);
     setHistoryError('');
-    fetch(`${apiBaseUrl}/api/reports/`, { credentials: 'include' })
-      .then(async (response) => {
-        const payload = await readResponse(response);
-        if (!response.ok) throw new Error(payload.detail || `Could not load reports (HTTP ${response.status}).`);
-        if (!Array.isArray(payload)) throw new Error('The SAFE API returned an invalid report list.');
-        return payload;
-      })
-      .then((items) => {
-        if (active) setReports(items);
+    Promise.all(['/api/reports/', '/api/reports/recent/'].map(async (path) => {
+      const response = await fetch(`${apiBaseUrl}${path}`, { credentials: 'include' });
+      const payload = await readResponse(response);
+      if (!response.ok) throw new Error(payload.detail || `Could not load reports (HTTP ${response.status}).`);
+      if (!Array.isArray(payload)) throw new Error('The SAFE API returned an invalid report list.');
+      return payload;
+    }))
+      .then(([mine, recent]) => {
+        if (active) {
+          setReports(mine);
+          setRecentReports(recent);
+        }
       })
       .catch((error) => {
         if (active) setHistoryError(errorMessage(error, 'Could not load report history.'));
@@ -259,6 +280,29 @@ function App() {
     };
   }, [apiBaseUrl, tab, user, historyRefresh]);
 
+  useEffect(() => {
+    if (!user || tab !== 'history' || messageReportId === null) return undefined;
+    let active = true;
+    setCaseMessageError('');
+    const loadCaseMessages = async () => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/reports/${messageReportId}/messages/`, { credentials: 'include' });
+        const payload = await readResponse(response);
+        if (!response.ok) throw new Error(payload.detail || `Could not load messages (HTTP ${response.status}).`);
+        if (!Array.isArray(payload)) throw new Error('The case messages response was not a list.');
+        if (active) setCaseMessages(payload);
+      } catch (error) {
+        if (active) setCaseMessageError(errorMessage(error, 'Could not load case messages.'));
+      }
+    };
+    void loadCaseMessages();
+    const interval = setInterval(() => void loadCaseMessages(), 15000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [apiBaseUrl, messageReportId, tab, user]);
+
   const getCsrfToken = async () => {
     const response = await fetch(`${apiBaseUrl}/api/auth/csrf/`, { credentials: 'include' });
     const payload = await readResponse(response);
@@ -266,6 +310,29 @@ function App() {
       throw new Error(`Could not start a secure request (HTTP ${response.status}).`);
     }
     return payload.csrf_token;
+  };
+
+  const sendCaseMessage = async () => {
+    if (messageReportId === null || !caseMessageDraft.trim()) return;
+    setCaseMessageBusy(true);
+    setCaseMessageError('');
+    try {
+      const csrfToken = await getCsrfToken();
+      const response = await fetch(`${apiBaseUrl}/api/reports/${messageReportId}/messages/`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+        body: JSON.stringify({ message: caseMessageDraft.trim() }),
+      });
+      const payload = await readResponse(response);
+      if (!response.ok) throw new Error(payload.detail || `Could not send message (HTTP ${response.status}).`);
+      setCaseMessages((items) => [...items, payload]);
+      setCaseMessageDraft('');
+    } catch (error) {
+      setCaseMessageError(errorMessage(error, 'Could not send case message.'));
+    } finally {
+      setCaseMessageBusy(false);
+    }
   };
 
   const handleAuth = async () => {
@@ -575,7 +642,7 @@ function App() {
     }
 
     if (step === 'incident') {
-      const filteredIncidents = INCIDENTS.filter((item) => item.severity === incidentFilter);
+      const filteredIncidents = incidentTypes.filter((item) => item.severity === incidentFilter);
       return (
         <View style={styles.fill}>
           <Header title="Select incident" action="Back" onAction={() => setStep('trigger')} />
@@ -590,6 +657,18 @@ function App() {
                   </Pressable>
                 ))}
               </View>
+              {incidentTypesError ? (
+                <>
+                  <Notice tone="error">{incidentTypesError}</Notice>
+                  <Pressable accessibilityRole="button" onPress={() => void loadIncidentTypes()} style={{ padding: 12, alignItems: 'center', backgroundColor: COLORS.surfaceRaised, borderRadius: 12 }}>
+                    <Text style={{ color: COLORS.text, fontWeight: '700' }}>Try again</Text>
+                  </Pressable>
+                </>
+              ) : incidentTypesLoading ? (
+                <ActivityIndicator color={COLORS.teal} />
+              ) : filteredIncidents.length === 0 ? (
+                <Text style={styles.bodyText}>No {incidentFilter} incident types are currently available.</Text>
+              ) : null}
               {filteredIncidents.map((item) => (
                 <Pressable
                   key={item.id}
@@ -697,6 +776,21 @@ function App() {
   const renderHistory = () => (
     <View style={styles.fill}>
       <Header title="Report history" action="Refresh" onAction={() => setHistoryRefresh((value) => value + 1)} />
+      <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+        <View style={styles.segment}>
+          {[
+            ['mine', 'My reports'],
+            ['recent', 'All · 7 days'],
+          ].map(([view, label]) => (
+            <Pressable key={view} onPress={() => setHistoryView(view)} style={[styles.segmentButton, historyView === view && styles.segmentButtonSelected]}>
+              <Text style={[styles.segmentText, historyView === view && styles.segmentTextSelected]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.helperText}>
+          {historyView === 'mine' ? 'Reports submitted by your account.' : 'Recent incident summaries. Personal details are not shown.'}
+        </Text>
+      </View>
       {historyLoading ? (
         <View style={styles.centered}><ActivityIndicator color={COLORS.red} /><Text style={styles.bodyText}>Loading reports...</Text></View>
       ) : historyError ? (
@@ -706,17 +800,17 @@ function App() {
             <PrimaryButton title="Try again" onPress={() => setHistoryRefresh((value) => value + 1)} />
           </>,
         )
-      ) : reports.length === 0 ? (
+      ) : (historyView === 'mine' ? reports : recentReports).length === 0 ? (
         <View style={styles.centered}>
-          <Text style={styles.cardTitle}>No reports for this account</Text>
-          <Text style={styles.bodyText}>Reports submitted while signed in to this account will appear here.</Text>
+          <Text style={styles.cardTitle}>{historyView === 'mine' ? 'No reports for this account' : 'No reports in the past 7 days'}</Text>
+          <Text style={styles.bodyText}>{historyView === 'mine' ? 'Reports submitted while signed in to this account will appear here.' : 'Newly submitted reports will appear here.'}</Text>
           <Pressable onPress={() => setHistoryRefresh((value) => value + 1)} style={styles.historyRefresh}>
             <Text style={styles.cardLink}>Refresh report history</Text>
           </Pressable>
         </View>
       ) : (
         scrollContent(
-          reports.map((report) => (
+          (historyView === 'mine' ? reports : recentReports).map((report) => (
             <View key={report.id} style={[styles.incidentCard, { borderColor: report.severity === 'urgent' ? '#783238' : '#28543A' }]}>
               <View style={styles.reportHeader}>
                 <Text style={styles.cardTitle}>{report.incident_label}</Text>
@@ -724,7 +818,56 @@ function App() {
               </View>
               <Text style={styles.helperText}>{new Date(report.created_at).toLocaleString()}</Text>
               <Text style={styles.bodyText}>{[report.building, report.floor].filter((value) => value && value !== 'Unknown').join(' · ') || 'Location not provided'}</Text>
-              {report.description ? <Text style={styles.bodyText}>{report.description}</Text> : null}
+              {historyView === 'mine' && report.description ? <Text style={styles.bodyText}>{report.description}</Text> : null}
+              {historyView === 'mine' ? (
+                <View style={{ marginTop: 5, gap: 9 }}>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => {
+                      setMessageReportId((current) => current === report.id ? null : report.id);
+                      setCaseMessages([]);
+                      setCaseMessageError('');
+                    }}
+                    style={{ alignSelf: 'flex-start', paddingVertical: 5 }}
+                  >
+                    <Text style={{ color: '#38BDF8', fontSize: 11, fontWeight: '700' }}>
+                      {messageReportId === report.id ? 'Hide secure messages' : 'Open secure messages'}
+                    </Text>
+                  </Pressable>
+                  {messageReportId === report.id ? (
+                    <View style={{ gap: 8, padding: 10, borderRadius: 10, backgroundColor: '#101722', borderWidth: 1, borderColor: '#273142' }}>
+                      {caseMessages.length === 0 && !caseMessageError ? <Text style={styles.helperText}>No messages yet. Message clinic staff about this report.</Text> : null}
+                      {caseMessages.map((message) => (
+                        <View key={message.id} style={{ padding: 9, borderRadius: 8, backgroundColor: message.sender_role === 'patient' ? '#15253a' : '#123025' }}>
+                          <Text style={{ color: COLORS.text, fontSize: 10, fontWeight: '700' }}>{message.sender_name} · {new Date(message.created_at).toLocaleString()}</Text>
+                          <Text style={[styles.bodyText, { marginTop: 5 }]}>{message.message}</Text>
+                        </View>
+                      ))}
+                      {caseMessageError ? <Text style={{ color: '#FCA5A5', fontSize: 10 }}>{caseMessageError}</Text> : null}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                        <TextInput
+                          accessibilityLabel="Message clinic staff"
+                          value={caseMessageDraft}
+                          onChangeText={setCaseMessageDraft}
+                          placeholder="Write a message..."
+                          placeholderTextColor={COLORS.subtle}
+                          maxLength={3000}
+                          style={{ flex: 1, minHeight: 38, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, color: COLORS.text, backgroundColor: COLORS.surfaceRaised, fontSize: 11 }}
+                        />
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Send message"
+                          disabled={caseMessageBusy || !caseMessageDraft.trim()}
+                          onPress={() => void sendCaseMessage()}
+                          style={{ padding: 10, borderRadius: 8, backgroundColor: COLORS.teal }}
+                        >
+                          <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>{caseMessageBusy ? '...' : 'SEND'}</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
             </View>
           )),
         )
@@ -817,12 +960,23 @@ function App() {
             <View style={styles.main}>{renderTabContent()}</View>
             <View style={styles.tabBar}>
               {[
-                ['home', 'Home'],
-                ['history', 'History'],
-                ['contacts', 'Contacts'],
-                ['account', 'Account'],
-              ].map(([key, label]) => (
-                <Pressable key={key} onPress={() => setTab(key)} style={styles.tabButton}>
+                ['home', 'Home', 'home-outline'],
+                ['history', 'History', 'history'],
+                ['contacts', 'Contacts', 'phone-outline'],
+                ['account', 'Account', 'account-outline'],
+              ].map(([key, label, iconName]) => (
+                <Pressable
+                  key={key}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: tab === key }}
+                  onPress={() => setTab(key)}
+                  style={styles.tabButton}
+                >
+                  <MaterialCommunityIcons
+                    name={iconName}
+                    size={21}
+                    color={tab === key ? COLORS.red : COLORS.subtle}
+                  />
                   <Text style={[styles.tabLabel, tab === key && styles.tabLabelActive]}>{label}</Text>
                 </Pressable>
               ))}
@@ -933,9 +1087,9 @@ const styles = StyleSheet.create({
   successMarkText: { color: COLORS.teal, fontSize: 32, fontWeight: '800' },
   reportHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
   statusText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
-  tabBar: { minHeight: 60, flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: COLORS.border, backgroundColor: '#0A0C12' },
-  tabButton: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
-  tabLabel: { color: COLORS.subtle, fontSize: 12, fontWeight: '600' },
+  tabBar: { minHeight: 66, flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: COLORS.border, backgroundColor: '#0A0C12' },
+  tabButton: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 7 },
+  tabLabel: { color: COLORS.subtle, fontSize: 10, fontWeight: '600' },
   tabLabelActive: { color: COLORS.red },
 });
 

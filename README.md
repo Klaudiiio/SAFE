@@ -32,6 +32,11 @@ For local-only work, the default values are usually fine until you connect Supab
 - `SECRET_KEY` to a secure random value
 - `CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173`
 
+When `DATABASE_URL` points to the Supabase connection pooler, Django uses the
+transaction-pooler port (`6543`), disables persistent connections, and disables
+server-side cursors. This avoids exhausting the smaller session-pooler client
+limit during local development.
+
 ### 3) Run database migrations
 
 ```bash
@@ -59,6 +64,7 @@ Open:
 
 - Frontend: http://localhost:5173
 - Admin console: http://localhost:5173/admin/
+- Clinic staff portal: http://localhost:5173/clinic-staff/
 - Backend health: http://127.0.0.1:8000/api/health/
 
 ### Admin console
@@ -74,7 +80,8 @@ password. The console provides staff-only incident review and response status/ET
 updates, plus demo account verification and access controls. Admin API access is
 restricted to authenticated Django staff users. After signing in at `/admin/`,
 choose **Create staff account** on the overview or **Create admin account** in
-the sidebar to add another staff login. New accounts receive staff permissions
+the sidebar to add another staff login. The console also manages incident types,
+manual campus locations, and incident activity logs. New accounts receive staff permissions
 only; only an existing administrator or staff member can create them, and the
 first staff account must be bootstrapped with `createsuperuser`. Admin membership
 is tracked in the `admin_accounts` database table linked to Django users;
@@ -86,10 +93,52 @@ student ID, course, phone number, creation timestamp, username, and account type
 course, and phone number. Passwords are hashed and managed only by Django's
 `auth_user` credential table; they are never duplicated or stored as plaintext in
 the profile tables. SAFE application tables use readable names: `user_accounts`
-for regular profiles, `admin_accounts` for staff accounts, and `emergency_reports`
-for reports. A migration renames the existing tables in place without deleting
-their records. Django's built-in `auth_user` and related authentication tables
-keep their framework-defined names.
+for regular profiles, `admin_accounts` for staff accounts, `incident_types` for
+the admin-managed incident catalog, `locations` for manual building/room entries,
+`incidents` for user reports, and `incident_logs` for submission and response
+history. Each incident links to one incident type and location; location
+coordinates are optional and are not collected by the user reporting forms.
+The incident schema migration preserves existing report data while linking it
+to the new catalog and location records. Django's built-in `auth_user` and
+related authentication tables keep their framework-defined names.
+The signed-in user's report history is private to that account. The app also
+provides a separate view of incident summaries from the past seven days; it
+omits report descriptions and reporter details.
+
+### Clinic staff portal
+
+Open http://localhost:5173/clinic-staff/ and sign in with a responder account
+created by an administrator in **Admin console → Clinic responders**. Clinic
+responders use separate non-admin Django accounts; their hashed passwords remain
+in Django's `auth_user` table. The portal includes a shared incident queue,
+responder availability, in-app alerts, patient contact and secure case messages,
+clinical notes, vitals, incident history, and response summaries.
+
+The clinic staff app is also available as a separate Expo app for iOS, Android,
+and Expo web. Install dependencies once, then start Metro from its folder:
+
+```powershell
+cd clinic-staff
+npm install
+npx expo start
+```
+
+On a phone, connect to the same network as Django and allow Python through
+Windows Firewall if prompted. The app detects the Expo host IP for the backend;
+you can also enter the Django computer's IP address and port on the sign-in
+screen or in Settings. Use the Expo Go version compatible with SDK 58.
+
+Apply the reports migration before first use:
+
+```powershell
+cd backend
+python manage.py migrate
+```
+
+An ambulance request in the portal records and alerts the clinic team only; it
+does not contact emergency services or dispatch an ambulance. This demo portal
+is not a substitute for emergency services or an approved clinical record
+system.
 
 ### One-command local startup
 

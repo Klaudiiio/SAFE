@@ -58,8 +58,16 @@ WSGI_APPLICATION = "safe_capstone.wsgi.application"
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 if DATABASE_URL:
+    database_config = dj_database_url.parse(DATABASE_URL, conn_max_age=600)
+    is_supabase_pooler = (database_config.get("HOST") or "").endswith(".pooler.supabase.com")
+    pooler_port = str(database_config.get("PORT") or "")
+    if is_supabase_pooler and pooler_port in {"5432", "6543"}:
+        if pooler_port == "5432":
+            database_config["PORT"] = "6543"
+        database_config["CONN_MAX_AGE"] = 0
+        database_config["DISABLE_SERVER_SIDE_CURSORS"] = True
     DATABASES = {
-        "default": dj_database_url.parse(DATABASE_URL, conn_max_age=600),
+        "default": database_config,
     }
 else:
     DATABASES = {
@@ -105,7 +113,18 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 LOCAL_NETWORK_CSRF_ORIGINS = []
 if DEBUG:
-    CSRF_TRUSTED_ORIGINS.extend(["http://localhost:5173", "http://127.0.0.1:5173"])
+    local_dev_ports = (5173, 8081, 8082, 8083, 19006)
+    local_dev_origins = [
+        f"http://{host}:{port}"
+        for host in ("localhost", "127.0.0.1")
+        for port in local_dev_ports
+    ]
+    CORS_ALLOWED_ORIGINS.extend(
+        origin for origin in local_dev_origins if origin not in CORS_ALLOWED_ORIGINS
+    )
+    CSRF_TRUSTED_ORIGINS.extend(
+        origin for origin in local_dev_origins if origin not in CSRF_TRUSTED_ORIGINS
+    )
     local_ipv4_addresses = set()
     for address_info in socket.getaddrinfo(
         socket.gethostname(), None, socket.AF_INET, socket.SOCK_STREAM
@@ -119,9 +138,12 @@ if DEBUG:
     LOCAL_NETWORK_CSRF_ORIGINS = [
         f"http://{address}:{port}"
         for address in sorted(local_ipv4_addresses)
-        for port in (5173, 8000, 8081)
+        for port in (*local_dev_ports, 8000)
     ]
     CSRF_TRUSTED_ORIGINS.extend(LOCAL_NETWORK_CSRF_ORIGINS)
+    CORS_ALLOWED_ORIGINS.extend(
+        origin for origin in LOCAL_NETWORK_CSRF_ORIGINS if origin not in CORS_ALLOWED_ORIGINS
+    )
 
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
