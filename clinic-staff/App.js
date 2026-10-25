@@ -95,6 +95,10 @@ function App() {
   const [report, setReport] = useState(null);
   const [availability, setAvailability] = useState('available');
   const [loading, setLoading] = useState(false);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [patientsLoading, setPatientsLoading] = useState(false);
+  const [noticesLoading, setNoticesLoading] = useState(false);
+  const [reportsLoading, setReportsLoading] = useState(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -122,7 +126,12 @@ function App() {
   }, [baseUrl]);
 
   const loadNotices = useCallback(async () => {
-    setNotices(await api('/api/clinic/notifications/'));
+    setNoticesLoading(true);
+    try {
+      setNotices(await api('/api/clinic/notifications/'));
+    } finally {
+      setNoticesLoading(false);
+    }
   }, [api]);
 
   const loadDashboard = useCallback(async () => {
@@ -132,6 +141,8 @@ function App() {
       await loadNotices();
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load the clinic dashboard.');
+    } finally {
+      setDashboardLoading(false);
     }
   }, [api, loadNotices, responder]);
 
@@ -174,6 +185,7 @@ function App() {
         if (!active) return;
         setResponder(account);
         setAvailability(account.availability_status);
+        setDashboardLoading(true);
       })
       .catch(() => {
         if (active) setResponder(null);
@@ -197,16 +209,28 @@ function App() {
 
   useEffect(() => {
     if (screen !== 'patients' || !responder) return;
+    let active = true;
+    setPatientsLoading(true);
     api(`/api/clinic/patients/?q=${encodeURIComponent(search)}`)
-      .then(setPatients)
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : 'Could not load patients.'));
+      .then((items) => { if (active) setPatients(items); })
+      .catch((loadError) => {
+        if (active) setError(loadError instanceof Error ? loadError.message : 'Could not load patients.');
+      })
+      .finally(() => { if (active) setPatientsLoading(false); });
+    return () => { active = false; };
   }, [api, responder, screen, search]);
 
   useEffect(() => {
     if (screen !== 'reports' || !responder) return;
+    let active = true;
+    setReportsLoading(true);
     api('/api/clinic/reports/')
-      .then(setReport)
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : 'Could not load reports.'));
+      .then((data) => { if (active) setReport(data); })
+      .catch((loadError) => {
+        if (active) setError(loadError instanceof Error ? loadError.message : 'Could not load reports.');
+      })
+      .finally(() => { if (active) setReportsLoading(false); });
+    return () => { active = false; };
   }, [api, responder, screen]);
 
   useEffect(() => {
@@ -230,6 +254,7 @@ function App() {
       });
       setResponder(account);
       setAvailability(account.availability_status);
+      setDashboardLoading(true);
       setPassword('');
     } catch (loginFailure) {
       setLoginError(loginFailure instanceof Error ? loginFailure.message : 'Sign in failed.');
@@ -356,7 +381,12 @@ function App() {
       <SafeAreaView style={styles.safeArea}>
         <StatusBar style="dark" />
         {checking ? (
-          <View style={styles.center}><ActivityIndicator color={C.green} /><Text style={styles.muted}>Checking clinic session...</Text></View>
+          <View style={styles.startupLoading} accessibilityRole="progressbar" accessibilityLabel="Checking clinic staff session">
+            <View style={styles.brandMark}><Text style={styles.brandHeart}>+</Text></View>
+            <ActivityIndicator color={C.green} size="large" />
+            <Text style={styles.loadingTitle}>Checking clinic session</Text>
+            <Text style={styles.muted}>Connecting securely to the SAFE response network...</Text>
+          </View>
         ) : !responder ? (
           <ScrollView contentContainerStyle={styles.loginPage} keyboardShouldPersistTaps="handled">
             <View style={styles.loginCard}>
@@ -368,7 +398,7 @@ function App() {
               <Field label="Password" value={password} onChangeText={setPassword} placeholder="Password" secureTextEntry />
               <Field label="Django server address" value={serverAddress} onChangeText={setServerAddress} placeholder="192.168.1.10:8000" autoCapitalize="none" />
               {loginError ? <Banner tone="error">{loginError}</Banner> : null}
-              <Button title="Sign in to clinic" onPress={() => void signIn()} loading={working} />
+              <Button title="Sign in to clinic" loadingTitle="Signing in..." onPress={() => void signIn()} loading={working} />
               <Text style={styles.loginFoot}>Separate responder access · Secure session</Text>
             </View>
           </ScrollView>
@@ -402,6 +432,7 @@ function App() {
                 <DashboardScreen
                   responder={responder}
                   dashboard={dashboard}
+                  loading={dashboardLoading}
                   onRefresh={() => void loadDashboard()}
                   onCases={() => { setBucket('incoming'); setScreen('cases'); }}
                   onOpenCase={(record) => void openCase(record)}
@@ -439,9 +470,9 @@ function App() {
                   working={working}
                 />
               )}
-              {screen === 'patients' && <PatientsScreen patients={patients} search={search} onSearch={setSearch} />}
-              {screen === 'notifications' && <NotificationsScreen notices={notices} onOpen={(item) => void markRead(item)} />}
-              {screen === 'reports' && <ReportsScreen report={report} />}
+              {screen === 'patients' && <PatientsScreen patients={patients} loading={patientsLoading} search={search} onSearch={setSearch} />}
+              {screen === 'notifications' && <NotificationsScreen notices={notices} loading={noticesLoading} onOpen={(item) => void markRead(item)} />}
+              {screen === 'reports' && <ReportsScreen report={report} loading={reportsLoading} />}
               {screen === 'settings' && <SettingsScreen responder={responder} availability={availability} serverAddress={serverAddress} onAvailability={(value) => void updateAvailability(value)} onServerAddress={setServerAddress} onLogout={() => void signOut()} />}
             </ScrollView>
 
@@ -458,6 +489,9 @@ function App() {
                       setScreen(id);
                       setError('');
                       if (id === 'cases') void loadCases(bucket, search);
+                      if (id === 'patients') setPatientsLoading(true);
+                      if (id === 'reports') setReportsLoading(true);
+                      if (id === 'notifications') setNoticesLoading(true);
                       if (id === 'notifications') void loadNotices().catch((loadError) => setError(loadError.message));
                     }}
                   >
@@ -479,7 +513,7 @@ function App() {
   );
 }
 
-function DashboardScreen({ responder, dashboard, onRefresh, onCases, onOpenCase }) {
+function DashboardScreen({ responder, dashboard, loading, onRefresh, onCases, onOpenCase }) {
   const stats = [
     ['Incoming', dashboard?.incoming_count ?? '—', 'Cases to review', C.green, C.greenLight],
     ['In response', dashboard?.active_count ?? '—', 'Active cases', C.blue, C.blueLight],
@@ -497,6 +531,7 @@ function DashboardScreen({ responder, dashboard, onRefresh, onCases, onOpenCase 
         </View>
         <Pressable style={styles.smallButton} onPress={onRefresh}><Text style={styles.smallButtonText}>Refresh</Text></Pressable>
       </View>
+      {loading ? <View style={styles.dataLoading}><ActivityIndicator color={C.green} /><Text style={styles.muted}>Loading dashboard and notifications...</Text></View> : <>
       <View style={styles.statsGrid}>{stats.map(([label, value, description, color, tint]) => <View key={label} style={styles.statCard}><Text style={[styles.statLabel, { color }]}>{label}</Text><Text style={styles.statValue}>{value}</Text><Text style={styles.statNote}>{description}</Text></View>)}</View>
       <Card title="Clinic coverage" subtitle="Available clinic responders">
         <View style={styles.coverageLine}><Text style={styles.coverageNumber}>{dashboard?.responders_available ?? '—'}</Text><Text style={styles.muted}> available out of {dashboard?.responders_total ?? '—'}</Text></View>
@@ -505,6 +540,7 @@ function DashboardScreen({ responder, dashboard, onRefresh, onCases, onOpenCase 
       </Card>
       <View style={styles.sectionHeading}><View><Text style={styles.cardTitle}>Recent cases</Text><Text style={styles.helper}>Latest reports across SAFE</Text></View><Pressable onPress={onCases}><Text style={styles.link}>Open queue ›</Text></Pressable></View>
       {latest.length === 0 ? <Empty title="No recent cases" text="New incidents will appear in your shared queue." /> : latest.map((record) => <CaseCard key={record.id} record={record} onPress={() => onOpenCase(record)} />)}
+      </>}
     </>
   );
 }
@@ -586,27 +622,28 @@ function CaseScreen(props) {
   );
 }
 
-function PatientsScreen({ patients, search, onSearch }) {
+function PatientsScreen({ patients, loading, search, onSearch }) {
   return (
     <>
       <Text style={styles.eyebrow}>PATIENT RECORDS</Text><Text style={styles.pageTitle}>Patients</Text>
       <TextInput value={search} onChangeText={onSearch} placeholder="Search name or email" placeholderTextColor={C.subtle} style={styles.input} />
-      {patients.length ? patients.map((item) => <Card key={item.id} title={item.name} subtitle={item.email}><Text style={styles.bodyText}>Phone: {item.phone_number || 'Not provided'}</Text><Text style={styles.bodyText}>Incident reports: {item.reports_count}</Text><Text style={styles.helper}>Last report: {dateTime(item.last_reported_at)}</Text></Card>) : <Empty title="No patient records" text="Records appear when patients submit incident reports." />}
+      {loading ? <View style={styles.dataLoading}><ActivityIndicator color={C.green} /><Text style={styles.muted}>Loading patient records...</Text></View> : patients.length ? patients.map((item) => <Card key={item.id} title={item.name} subtitle={item.email}><Text style={styles.bodyText}>Phone: {item.phone_number || 'Not provided'}</Text><Text style={styles.bodyText}>Incident reports: {item.reports_count}</Text><Text style={styles.helper}>Last report: {dateTime(item.last_reported_at)}</Text></Card>) : <Empty title="No patient records" text="Records appear when patients submit incident reports." />}
     </>
   );
 }
 
-function NotificationsScreen({ notices, onOpen }) {
+function NotificationsScreen({ notices, loading, onOpen }) {
   return (
     <>
       <Text style={styles.eyebrow}>IN-APP ALERTS</Text><Text style={styles.pageTitle}>Notifications</Text>
-      {notices.length ? notices.map((item) => <Pressable key={item.id} style={[styles.caseCard, item.status === 'new' && styles.unread]} onPress={() => onOpen(item)}><Text style={styles.caseTitle}>{item.incident_label}</Text><Text style={styles.bodyText}>{item.message}</Text><Text style={styles.helper}>{pretty(item.event_type)} · {dateTime(item.created_at)}</Text></Pressable>) : <Empty title="No notifications" text="New incident and case updates will appear here." />}
+      {loading ? <View style={styles.dataLoading}><ActivityIndicator color={C.green} /><Text style={styles.muted}>Loading notifications...</Text></View> : notices.length ? notices.map((item) => <Pressable key={item.id} style={[styles.caseCard, item.status === 'new' && styles.unread]} onPress={() => onOpen(item)}><Text style={styles.caseTitle}>{item.incident_label}</Text><Text style={styles.bodyText}>{item.message}</Text><Text style={styles.helper}>{pretty(item.event_type)} · {dateTime(item.created_at)}</Text></Pressable>) : <Empty title="No notifications" text="New incident and case updates will appear here." />}
     </>
   );
 }
 
-function ReportsScreen({ report }) {
-  if (!report) return <View style={styles.center}><ActivityIndicator color={C.green} /><Text style={styles.muted}>Loading reports...</Text></View>;
+function ReportsScreen({ report, loading }) {
+  if (loading) return <View style={styles.dataLoading}><ActivityIndicator color={C.green} /><Text style={styles.muted}>Loading clinic reports...</Text></View>;
+  if (!report) return <Empty title="Reports unavailable" text="The report summary could not be loaded. Check the error message above and try again." />;
   const metrics = [['Total cases', report.total], ['Urgent cases', report.urgent], ['Resolved', report.resolved], ['Resolution rate', `${report.resolution_rate}%`]];
   return (
     <>
@@ -646,11 +683,11 @@ function Field({ label, value, onChangeText, placeholder, secureTextEntry, multi
   return <View style={styles.field}><Text style={styles.label}>{label}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={C.subtle} secureTextEntry={secureTextEntry} multiline={multiline} autoCapitalize={autoCapitalize || 'sentences'} autoCorrect={false} style={[styles.input, multiline && styles.multiline]} /></View>;
 }
 
-function Button({ title, onPress, loading, variant = 'primary', disabled }) {
+function Button({ title, loadingTitle = 'Working...', onPress, loading, variant = 'primary', disabled }) {
   const variantStyle = variant === 'primary' ? styles.buttonPrimary
     : variant === 'warning' ? styles.buttonWarning
       : variant === 'resolve' ? styles.buttonResolve : styles.buttonSecondary;
-  return <Pressable disabled={disabled || loading} onPress={onPress} style={[styles.button, variantStyle, (disabled || loading) && { opacity: 0.55 }]}>{loading ? <ActivityIndicator color={variant === 'secondary' ? C.green : '#fff'} /> : <Text style={[styles.buttonText, variant === 'secondary' && { color: C.green }, variant === 'warning' && { color: C.amber }]}>{title}</Text>}</Pressable>;
+  return <Pressable disabled={disabled || loading} onPress={onPress} accessibilityState={{ disabled: disabled || loading, busy: loading }} style={[styles.button, variantStyle, (disabled || loading) && { opacity: 0.55 }]}>{loading ? <View style={styles.buttonLoading}><ActivityIndicator color={variant === 'secondary' ? C.green : '#fff'} /><Text style={[styles.buttonText, variant === 'secondary' && { color: C.green }, variant === 'warning' && { color: C.amber }]}>{loadingTitle}</Text></View> : <Text style={[styles.buttonText, variant === 'secondary' && { color: C.green }, variant === 'warning' && { color: C.amber }]}>{title}</Text>}</Pressable>;
 }
 
 function Banner({ tone, children, onClose }) {
@@ -672,6 +709,9 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: C.background },
   app: { flex: 1, backgroundColor: C.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 20 },
+  startupLoading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 28 },
+  loadingTitle: { color: C.text, fontSize: 16, fontWeight: '800', marginTop: 3 },
+  dataLoading: { minHeight: 140, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 20, borderWidth: 1, borderColor: C.border, borderRadius: 11, backgroundColor: '#fff', marginBottom: 12 },
   muted: { color: C.muted, fontSize: 12, lineHeight: 18 },
   helper: { color: C.subtle, fontSize: 10, lineHeight: 15 },
   eyebrow: { color: '#438466', fontSize: 9, letterSpacing: 1.4, fontWeight: '800' },
@@ -686,6 +726,7 @@ const styles = StyleSheet.create({
   input: { minHeight: 42, paddingHorizontal: 11, paddingVertical: Platform.OS === 'web' ? 0 : 10, borderWidth: 1, borderColor: '#DCE7DD', borderRadius: 8, color: C.text, backgroundColor: '#fff', fontSize: 12 },
   multiline: { minHeight: 76, paddingTop: 10, textAlignVertical: 'top' },
   button: { minHeight: 41, alignItems: 'center', justifyContent: 'center', borderRadius: 9, paddingHorizontal: 13, marginTop: 9 },
+  buttonLoading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
   buttonPrimary: { backgroundColor: C.green },
   buttonResolve: { backgroundColor: '#376E4E' },
   buttonWarning: { backgroundColor: '#FFF8EC', borderWidth: 1, borderColor: '#F0DEC8' },

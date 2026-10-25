@@ -119,16 +119,20 @@ const pretty = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, (l
 function ClinicStaffApp() {
   const [responder, setResponder] = useState<Responder | null>(null);
   const [checking, setChecking] = useState(true);
+  const [loginBusy, setLoginBusy] = useState(false);
   const [loginName, setLoginName] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [page, setPage] = useState<Page>("overview");
   const [bucket, setBucket] = useState<Bucket>("incoming");
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
   const [cases, setCases] = useState<CaseRecord[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [patientsLoading, setPatientsLoading] = useState(false);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [report, setReport] = useState<ReportSummary | null>(null);
+  const [reportsLoading, setReportsLoading] = useState(false);
   const [selected, setSelected] = useState<CaseRecord | null>(null);
   const [messages, setMessages] = useState<CaseMessage[]>([]);
   const [search, setSearch] = useState("");
@@ -152,6 +156,8 @@ function ClinicStaffApp() {
       setNotices(await api<Notice[]>("/api/clinic/notifications/"));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Could not load clinic dashboard.");
+    } finally {
+      setDashboardLoading(false);
     }
   }, [responder]);
 
@@ -175,6 +181,7 @@ function ClinicStaffApp() {
       .then((account) => {
         setResponder(account);
         setAvailability(account.availability_status);
+        setDashboardLoading(true);
       })
       .catch(() => setResponder(null))
       .finally(() => setChecking(false));
@@ -194,16 +201,28 @@ function ClinicStaffApp() {
 
   useEffect(() => {
     if (!responder || page !== "patients") return;
+    let active = true;
+    setPatientsLoading(true);
     api<Patient[]>(`/api/clinic/patients/?q=${encodeURIComponent(search)}`)
-      .then(setPatients)
-      .catch((loadError: unknown) => setError(loadError instanceof Error ? loadError.message : "Could not load patients."));
+      .then((items) => { if (active) setPatients(items); })
+      .catch((loadError: unknown) => {
+        if (active) setError(loadError instanceof Error ? loadError.message : "Could not load patients.");
+      })
+      .finally(() => { if (active) setPatientsLoading(false); });
+    return () => { active = false; };
   }, [page, responder, search]);
 
   useEffect(() => {
     if (!responder || page !== "reports") return;
+    let active = true;
+    setReportsLoading(true);
     api<ReportSummary>("/api/clinic/reports/")
-      .then(setReport)
-      .catch((loadError: unknown) => setError(loadError instanceof Error ? loadError.message : "Could not load reports."));
+      .then((summary) => { if (active) setReport(summary); })
+      .catch((loadError: unknown) => {
+        if (active) setError(loadError instanceof Error ? loadError.message : "Could not load reports.");
+      })
+      .finally(() => { if (active) setReportsLoading(false); });
+    return () => { active = false; };
   }, [page, responder]);
 
   const loadMessages = useCallback(async (caseId: number) => {
@@ -238,6 +257,7 @@ function ClinicStaffApp() {
   const login = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLoginError("");
+    setLoginBusy(true);
     try {
       const account = await api<Responder>("/api/clinic/login/", {
         method: "POST",
@@ -246,8 +266,11 @@ function ClinicStaffApp() {
       setResponder(account);
       setAvailability(account.availability_status);
       setLoginPassword("");
+      setDashboardLoading(true);
     } catch (loginFailure) {
       setLoginError(loginFailure instanceof Error ? loginFailure.message : "Sign in failed.");
+    } finally {
+      setLoginBusy(false);
     }
   };
 
@@ -362,7 +385,7 @@ function ClinicStaffApp() {
     { id: "settings" as const, label: "Settings", icon: Stethoscope },
   ], []);
 
-  if (checking) return <div className="clinic-loading"><LoaderCircle className="spin" /> Checking clinic staff session</div>;
+  if (checking) return <div className="clinic-loading" role="status" aria-live="polite"><LoaderCircle className="spin" /> Checking clinic staff session...</div>;
   if (!responder) {
     return (
       <main className="clinic-login">
@@ -377,7 +400,9 @@ function ClinicStaffApp() {
             <label htmlFor="clinic-password">Password</label>
             <input id="clinic-password" type="password" autoComplete="current-password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} required />
             {loginError && <div className="clinic-error" role="alert">{loginError}</div>}
-            <button className="clinic-primary wide" type="submit">Sign in to clinic <ArrowRight size={16} /></button>
+            <button className="clinic-primary wide" type="submit" disabled={loginBusy} aria-busy={loginBusy}>
+              {loginBusy ? <><LoaderCircle className="spin" size={16} /> Signing in...</> : <>Sign in to clinic <ArrowRight size={16} /></>}
+            </button>
           </form>
           <div className="login-security"><Shield size={15} /> Private responder access · Secure session</div>
         </section>
@@ -448,7 +473,7 @@ function ClinicStaffApp() {
           )}
 
           {page === "overview" && (
-            <DashboardPage dashboard={dashboard} responder={responder} loading={loading} onRefresh={() => void loadDashboard()} onOpenCase={(record) => void openCase(record)} onGoCases={() => navigate("cases")} />
+            <DashboardPage dashboard={dashboard} responder={responder} loading={loading} dashboardLoading={dashboardLoading} onRefresh={() => void loadDashboard()} onOpenCase={(record) => void openCase(record)} onGoCases={() => navigate("cases")} />
           )}
           {page === "cases" && (
             selected ? (
@@ -474,12 +499,12 @@ function ClinicStaffApp() {
               <CaseQueue bucket={bucket} onBucket={setBucket} cases={cases} search={search} onSearch={setSearch} loading={loading} onOpen={(record) => void openCase(record)} onRefresh={() => void loadCases()} />
             )
           )}
-          {page === "patients" && <PatientsPage patients={patients} search={search} onSearch={setSearch} />}
+          {page === "patients" && <PatientsPage patients={patients} loading={patientsLoading} search={search} onSearch={setSearch} />}
           {page === "calendar" && <TimelinePage cases={dashboard?.recent_cases ?? []} onOpen={(record) => void openCase(record)} />}
           {page === "messages" && (
             <MessagesPage cases={dashboard?.recent_cases ?? []} onOpen={(record) => void openCase(record)} />
           )}
-          {page === "reports" && <ReportsPage report={report} />}
+          {page === "reports" && <ReportsPage report={report} loading={reportsLoading} />}
           {page === "resources" && <ResourcesPage />}
           {page === "settings" && <SettingsPage responder={responder} availability={availability} onAvailability={(value) => void changeAvailability(value)} />}
         </div>
@@ -489,8 +514,8 @@ function ClinicStaffApp() {
   );
 }
 
-function DashboardPage({ dashboard, responder, loading, onRefresh, onOpenCase, onGoCases }: {
-  dashboard: Dashboard | null; responder: Responder; loading: boolean; onRefresh: () => void;
+function DashboardPage({ dashboard, responder, loading, dashboardLoading, onRefresh, onOpenCase, onGoCases }: {
+  dashboard: Dashboard | null; responder: Responder; loading: boolean; dashboardLoading: boolean; onRefresh: () => void;
   onOpenCase: (record: CaseRecord) => void; onGoCases: () => void;
 }) {
   return (
@@ -499,6 +524,7 @@ function DashboardPage({ dashboard, responder, loading, onRefresh, onOpenCase, o
         <div><div className="clinic-kicker">RESPONSE OVERVIEW</div><h1>Good day, {responder.name.split(" ")[0]}</h1><p>Here is the latest activity from your clinic response queue.</p></div>
         <button className="clinic-secondary" onClick={onRefresh} disabled={loading}><RefreshCw size={16} className={loading ? "spin" : ""} /> Refresh</button>
       </div>
+      {dashboardLoading ? <section className="clinic-panel"><LoadingLine message="Loading dashboard and notifications..." /></section> : <>
       <section className="clinic-metrics">
         <Metric label="Incoming cases" value={dashboard?.incoming_count ?? "—"} tone="mint" icon={Activity} note="Shared responder queue" />
         <Metric label="Active responses" value={dashboard?.active_count ?? "—"} tone="blue" icon={HeartPulse} note="Currently being handled" />
@@ -522,6 +548,7 @@ function DashboardPage({ dashboard, responder, loading, onRefresh, onOpenCase, o
         <div className="panel-heading"><div><h2>Recent activity</h2><p>Latest incidents across SAFE</p></div><Clock3 size={18} /></div>
         <CaseList cases={dashboard?.recent_cases ?? []} onOpen={onOpenCase} />
       </section>
+      </>}
     </>
   );
 }
@@ -639,11 +666,11 @@ function CaseDetail(props: {
   );
 }
 
-function PatientsPage({ patients, search, onSearch }: { patients: Patient[]; search: string; onSearch: (value: string) => void }) {
+function PatientsPage({ patients, loading, search, onSearch }: { patients: Patient[]; loading: boolean; search: string; onSearch: (value: string) => void }) {
   return <>
     <div className="clinic-page-heading"><div><div className="clinic-kicker">PATIENT RECORDS</div><h1>Patients</h1><p>Patients who have submitted an incident report.</p></div><span className="result-count">{patients.length} records</span></div>
     <label className="clinic-search patient-search"><Search size={16} /><input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search patients by name or email" /></label>
-    <section className="clinic-panel table-panel"><div className="patient-table-head"><span>Patient</span><span>Phone</span><span>Reports</span><span>Last report</span></div>{patients.map((patient) => <div className="patient-table-row" key={patient.id}><span><strong>{patient.name}</strong><small>{patient.email}</small></span><span>{patient.phone_number || "Not provided"}</span><span>{patient.reports_count}</span><span>{dateTime(patient.last_reported_at)}</span></div>)}{patients.length === 0 && <EmptyState title="No patient records" description="Patient records appear after an incident is submitted." />}</section>
+    <section className="clinic-panel table-panel">{loading ? <LoadingLine message="Loading patient records..." /> : <><div className="patient-table-head"><span>Patient</span><span>Phone</span><span>Reports</span><span>Last report</span></div>{patients.map((patient) => <div className="patient-table-row" key={patient.id}><span><strong>{patient.name}</strong><small>{patient.email}</small></span><span>{patient.phone_number || "Not provided"}</span><span>{patient.reports_count}</span><span>{dateTime(patient.last_reported_at)}</span></div>)}{patients.length === 0 && <EmptyState title="No patient records" description="Patient records appear after an incident is submitted." />}</>}</section>
   </>;
 }
 
@@ -668,10 +695,10 @@ function MessagesPage({ cases, onOpen }: { cases: CaseRecord[]; onOpen: (record:
   </>;
 }
 
-function ReportsPage({ report }: { report: ReportSummary | null }) {
+function ReportsPage({ report, loading }: { report: ReportSummary | null; loading: boolean }) {
   return <>
     <div className="clinic-page-heading"><div><div className="clinic-kicker">CLINIC ACTIVITY</div><h1>Reports</h1><p>Incident summary for the last 30 days.</p></div><ClipboardList size={23} /></div>
-    {!report ? <LoadingLine /> : <>
+    {loading ? <LoadingLine message="Loading clinic reports..." /> : !report ? <EmptyState title="Reports unavailable" description="The clinic report summary could not be loaded. Check the error message above and try again." /> : <>
       <section className="clinic-metrics report-metrics"><Metric label="Total cases" value={report.total} tone="mint" icon={Activity} note={`Since ${new Date(report.period_start).toLocaleDateString()}`} /><Metric label="Urgent cases" value={report.urgent} tone="amber" icon={AlertTriangle} note="Priority incidents" /><Metric label="Resolved" value={report.resolved} tone="blue" icon={CheckCheck} note="Closed or resolved" /><Metric label="Resolution rate" value={`${report.resolution_rate}%`} tone="violet" icon={ArrowDown} note="Resolved share of all cases" /></section>
       <section className="clinic-panel status-report"><div className="panel-heading"><div><h2>Cases by status</h2><p>Last 30 days</p></div></div>{report.by_status.map(({ status, count }) => <div className="status-report-row" key={status}><span>{pretty(status)}</span><div className="report-bar"><i style={{ width: `${report.total ? Math.max(count ? 4 : 0, count / report.total * 100) : 0}%` }} /></div><strong>{count}</strong></div>)}</section>
     </>}
@@ -705,8 +732,8 @@ function EmptyState({ title, description }: { title: string; description: string
   return <div className="clinic-empty"><span><Activity size={21} /></span><strong>{title}</strong><p>{description}</p></div>;
 }
 
-function LoadingLine() {
-  return <div className="clinic-loading-line"><LoaderCircle className="spin" size={19} /> Loading clinic data...</div>;
+function LoadingLine({ message = "Loading clinic data..." }: { message?: string }) {
+  return <div className="clinic-loading-line" role="status" aria-live="polite"><LoaderCircle className="spin" size={19} /> {message}</div>;
 }
 
 export default ClinicStaffApp;

@@ -93,18 +93,24 @@ function Header({ title, eyebrow = 'SAFE', action, onAction }) {
   );
 }
 
-function PrimaryButton({ title, onPress, disabled, color = COLORS.red }) {
+function PrimaryButton({ title, onPress, disabled, loading = false, loadingTitle, color = COLORS.red }) {
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={disabled}
+      accessibilityState={{ disabled: disabled || loading, busy: loading }}
+      disabled={disabled || loading}
       onPress={onPress}
       style={({ pressed }) => [
         styles.primaryButton,
-        { backgroundColor: color, opacity: disabled ? 0.5 : pressed ? 0.82 : 1 },
+        { backgroundColor: color, opacity: disabled || loading ? 0.5 : pressed ? 0.82 : 1 },
       ]}
     >
-      {disabled ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>{title}</Text>}
+      {loading ? (
+        <View style={styles.buttonLoading}>
+          <ActivityIndicator color="#FFFFFF" />
+          <Text style={styles.primaryButtonText}>{loadingTitle || 'Please wait...'}</Text>
+        </View>
+      ) : <Text style={styles.primaryButtonText}>{title}</Text>}
     </Pressable>
   );
 }
@@ -555,7 +561,13 @@ function App() {
           <Notice tone="warning">Demo sign-up is disabled by the server.</Notice>
         ) : null}
         {authError ? <Notice tone="error">{authError}</Notice> : null}
-        <PrimaryButton title={authMode === 'login' ? 'Sign in' : 'Create demo account'} onPress={handleAuth} disabled={busy || !authChecked} />
+        <PrimaryButton
+          title={authMode === 'login' ? 'Sign in' : 'Create demo account'}
+          loadingTitle={authMode === 'login' ? 'Signing in...' : 'Creating account...'}
+          onPress={handleAuth}
+          disabled={!authChecked}
+          loading={busy}
+        />
         <Text style={styles.disclaimer}>Demo only. Accounts are not identity-verified. Do not enter real personal or medical information.</Text>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -665,7 +677,10 @@ function App() {
                   </Pressable>
                 </>
               ) : incidentTypesLoading ? (
-                <ActivityIndicator color={COLORS.teal} />
+                <View style={styles.inlineLoading}>
+                  <ActivityIndicator color={COLORS.teal} />
+                  <Text style={styles.bodyText}>Loading incident types...</Text>
+                </View>
               ) : filteredIncidents.length === 0 ? (
                 <Text style={styles.bodyText}>No {incidentFilter} incident types are currently available.</Text>
               ) : null}
@@ -744,7 +759,12 @@ function App() {
                   {'\n'}Your report details are still available. Retry submission or go back to edit them.
                 </Notice>
               ) : null}
-              <PrimaryButton title={submitError ? 'Retry submission' : 'Submit report'} onPress={submitReport} disabled={busy} />
+              <PrimaryButton
+                title={submitError ? 'Retry submission' : 'Submit report'}
+                loadingTitle="Sending report..."
+                onPress={submitReport}
+                loading={busy}
+              />
               <PrimaryButton title="Edit report" onPress={() => setStep('details')} color={COLORS.surfaceRaised} />
             </>,
           )}
@@ -934,7 +954,7 @@ function App() {
           </View>
           <Text style={styles.disclaimer}>Identity checks are disabled. This demo account is not verified. Do not enter real personal or medical information.</Text>
           {logoutError ? <Notice tone="error">{logoutError}</Notice> : null}
-          <PrimaryButton title="Sign out" onPress={handleLogout} disabled={busy} color={COLORS.surfaceRaised} />
+          <PrimaryButton title="Sign out" loadingTitle="Signing out..." onPress={handleLogout} loading={busy} color={COLORS.surfaceRaised} />
         </>,
       )}
     </View>
@@ -952,7 +972,12 @@ function App() {
       <SafeAreaView edges={['top', 'left', 'right']} style={styles.app}>
         <StatusBar style="light" />
         {!authChecked ? (
-          <View style={styles.centered}><ActivityIndicator color={COLORS.red} /><Text style={styles.bodyText}>Connecting to SAFE...</Text></View>
+          <View style={styles.startupLoading} accessibilityRole="progressbar" accessibilityLabel="Connecting to SAFE">
+            <View style={styles.brandMark}><Text style={styles.brandMarkText}>S</Text></View>
+            <ActivityIndicator color={COLORS.red} size="large" />
+            <Text style={styles.startupTitle}>Connecting to SAFE</Text>
+            <Text style={styles.bodyText}>Checking your session and loading sign-in options...</Text>
+          </View>
         ) : !user ? (
           renderAuth()
         ) : (
@@ -1028,6 +1053,7 @@ const styles = StyleSheet.create({
   segmentText: { color: COLORS.muted, fontSize: 13, fontWeight: '600', textTransform: 'capitalize' },
   segmentTextSelected: { color: COLORS.text },
   primaryButton: { minHeight: 50, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', borderRadius: 11 },
+  buttonLoading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   primaryButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
   buttonPressed: { opacity: 0.84, transform: [{ scale: 0.99 }] },
   notice: { padding: 13, borderWidth: 1, borderRadius: 10 },
@@ -1083,6 +1109,9 @@ const styles = StyleSheet.create({
   checkboxSelected: { backgroundColor: COLORS.red, borderColor: COLORS.red },
   checkmark: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
+  startupLoading: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 14 },
+  startupTitle: { color: COLORS.text, fontSize: 18, fontWeight: '700', marginTop: 4 },
+  inlineLoading: { minHeight: 100, alignItems: 'center', justifyContent: 'center', gap: 10 },
   successMark: { width: 66, height: 66, borderRadius: 33, backgroundColor: '#123322', borderWidth: 1, borderColor: '#28543A', alignItems: 'center', justifyContent: 'center' },
   successMarkText: { color: COLORS.teal, fontSize: 32, fontWeight: '800' },
   reportHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },

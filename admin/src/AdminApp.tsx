@@ -146,8 +146,10 @@ function AdminApp() {
   const [loginName, setLoginName] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [loginBusy, setLoginBusy] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -162,6 +164,7 @@ function AdminApp() {
       setOverview(overviewResult);
       setReports(reportsResult);
       setAccounts(usersResult);
+      setDataLoaded(true);
       setSelectedReport((current) => current ? reportsResult.find((report) => report.id === current.id) ?? null : null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Could not load admin data.");
@@ -172,7 +175,10 @@ function AdminApp() {
 
   useEffect(() => {
     api<AdminUser>("/api/admin/session/")
-      .then(setAdmin)
+      .then((account) => {
+        if (account) setLoading(true);
+        setAdmin(account);
+      })
       .catch(() => setAdmin(null))
       .finally(() => setCheckingSession(false));
   }, []);
@@ -198,15 +204,21 @@ function AdminApp() {
   const login = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLoginError("");
+    setLoginBusy(true);
     try {
       const result = await api<AdminUser>("/api/admin/login/", {
         method: "POST",
         body: JSON.stringify({ username: loginName, password: loginPassword }),
       });
+      setError("");
+      setDataLoaded(false);
+      setLoading(true);
       setAdmin(result);
       setLoginPassword("");
     } catch (loginFailure) {
       setLoginError(loginFailure instanceof Error ? loginFailure.message : "Sign in failed.");
+    } finally {
+      setLoginBusy(false);
     }
   };
 
@@ -217,6 +229,7 @@ function AdminApp() {
       setOverview(null);
       setReports([]);
       setAccounts([]);
+      setDataLoaded(false);
     } catch (logoutFailure) {
       setError(logoutFailure instanceof Error ? logoutFailure.message : "Could not sign out.");
     }
@@ -297,7 +310,7 @@ function AdminApp() {
   ];
 
   if (checkingSession) {
-    return <div className="loading-screen"><LoaderCircle className="spin" size={24} /> Checking administrator session</div>;
+    return <div className="loading-screen" role="status" aria-live="polite"><LoaderCircle className="spin" size={24} /> Checking administrator session...</div>;
   }
 
   if (!admin) {
@@ -314,12 +327,18 @@ function AdminApp() {
             <label htmlFor="admin-password">Password</label>
             <input id="admin-password" type="password" autoComplete="current-password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} required />
             {loginError && <div role="alert" className="inline-error">{loginError}</div>}
-            <button className="primary-button login-button" type="submit">Sign in securely <ArrowUpRight size={16} /></button>
+            <button className="primary-button login-button" type="submit" disabled={loginBusy} aria-busy={loginBusy}>
+              {loginBusy ? <><LoaderCircle className="spin" size={16} /> Signing in...</> : <>Sign in securely <ArrowUpRight size={16} /></>}
+            </button>
           </form>
           <div className="login-foot"><ShieldCheck size={15} /> Staff access only · Session protected</div>
         </div>
       </main>
     );
+  }
+
+  if (admin && loading && !dataLoaded) {
+    return <div className="loading-screen loading-card" role="status" aria-live="polite"><LoaderCircle className="spin" size={26} /><span><strong>Loading admin workspace</strong><small>Fetching reports, accounts, and response metrics...</small></span></div>;
   }
 
   return (
@@ -363,6 +382,7 @@ function AdminApp() {
 
         <div className="page-content">
           {error && <div role="alert" className="error-banner"><AlertTriangle size={17} /><span>{error}</span><button aria-label="Dismiss error" onClick={() => setError("")}><X size={16} /></button></div>}
+          {loading && <div className="data-loading" role="status" aria-live="polite"><LoaderCircle className="spin" size={16} /> Refreshing admin data...</div>}
           {page === "overview" && (
             <>
               <div className="page-heading">
