@@ -1,7 +1,6 @@
 from django.conf import settings
 from django.db import models
 
-
 class AdminAccount(models.Model):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -31,7 +30,6 @@ class AdminAccount(models.Model):
     def __str__(self):
         return self.user.get_username()
 
-
 class DemoAccountProfile(models.Model):
     class AccountType(models.TextChoices):
         STUDENT = "student", "Student"
@@ -58,7 +56,6 @@ class DemoAccountProfile(models.Model):
     def __str__(self):
         return f"{self.display_name} ({self.account_type})"
 
-
 class IncidentType(models.Model):
     id = models.BigAutoField(primary_key=True, db_column="incident_types_id")
     code = models.SlugField(max_length=80, unique=True)
@@ -72,7 +69,6 @@ class IncidentType(models.Model):
 
     def __str__(self):
         return self.incident_name
-
 
 class Location(models.Model):
     id = models.BigAutoField(primary_key=True, db_column="location_id")
@@ -90,7 +86,6 @@ class Location(models.Model):
 
     def __str__(self):
         return f"{self.building}{f' · {self.room}' if self.room else ''}"
-
 
 class EmergencyReport(models.Model):
     id = models.BigAutoField(primary_key=True, db_column="incident_id")
@@ -130,7 +125,6 @@ class EmergencyReport(models.Model):
     def __str__(self):
         return f"{self.incident_type} ({self.status})"
 
-
 class ResponderAccount(models.Model):
     class Availability(models.TextChoices):
         AVAILABLE = "available", "Available"
@@ -169,7 +163,6 @@ class ResponderAccount(models.Model):
     def __str__(self):
         return self.name
 
-
 class IncidentNotification(models.Model):
     incident = models.ForeignKey(
         EmergencyReport,
@@ -184,7 +177,6 @@ class IncidentNotification(models.Model):
     class Meta:
         db_table = "incident_notifications"
         ordering = ["-created_at", "-id"]
-
 
 class ResponderNotification(models.Model):
     class Status(models.TextChoices):
@@ -217,7 +209,6 @@ class ResponderNotification(models.Model):
             ),
         ]
 
-
 class ClinicCaseNote(models.Model):
     incident = models.OneToOneField(
         EmergencyReport,
@@ -241,7 +232,6 @@ class ClinicCaseNote(models.Model):
     class Meta:
         db_table = "clinic_case_notes"
 
-
 class CaseMessage(models.Model):
     incident = models.ForeignKey(
         EmergencyReport,
@@ -261,7 +251,6 @@ class CaseMessage(models.Model):
         db_table = "case_messages"
         ordering = ["created_at", "id"]
 
-
 class IncidentLog(models.Model):
     id = models.BigAutoField(primary_key=True, db_column="log_id")
     incident = models.ForeignKey(
@@ -279,7 +268,7 @@ class IncidentLog(models.Model):
         db_column="admin_id",
     )
     responder = models.ForeignKey(
-        "ResponderAccount",
+        ResponderAccount,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

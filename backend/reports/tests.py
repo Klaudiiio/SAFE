@@ -660,7 +660,9 @@ class ClinicStaffTests(TestCase):
         self.assertEqual(self.client.get("/api/clinic/session/").status_code, 200)
         self.assertEqual(self.client.get("/api/clinic/cases/").status_code, 200)
         self.assertEqual(self.client.get("/api/admin/session/").status_code, 403)
-        self.assertEqual(self.client.get("/api/auth/me/").status_code, 401)
+        current_user = self.client.get("/api/auth/me/")
+        self.assertEqual(current_user.status_code, 200)
+        self.assertEqual(current_user.json()["user"]["user_type"], "clinic_staff")
         self.assertEqual(self.client.get("/api/clinic/session/").status_code, 200)
 
         self.client.force_login(self.patient)
@@ -677,6 +679,24 @@ class ClinicStaffTests(TestCase):
         self.responder_user.refresh_from_db()
         self.assertFalse(self.responder_user.is_staff)
         self.assertEqual(response.json()["department"], "Campus Clinic")
+
+    def test_shared_app_login_returns_responder_role_and_session_profile(self):
+        response = self.client.post(
+            "/api/auth/login/",
+            data=json.dumps({
+                "identifier": "clinic-responder",
+                "password": "Fictional-Responder-Password-927!",
+            }),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["user"]["user_type"], "clinic_staff")
+        self.assertEqual(response.json()["user"]["department"], "Campus Clinic")
+        current_user = self.client.get("/api/auth/me/")
+        self.assertEqual(current_user.status_code, 200, current_user.content)
+        self.assertEqual(current_user.json()["user"]["user_type"], "clinic_staff")
+        self.assertEqual(self.client.get("/api/clinic/session/").status_code, 200)
 
     def test_admin_can_create_responder_as_non_staff_with_password_hash(self):
         self.client.force_login(self.admin)

@@ -8,8 +8,10 @@ __pycache__/
 backend/*.sqlite3
 backend/staticfiles/
 backend/.env
+**/.env
 
 # Node
 node_modules/
 dist/
 .vite/
+app/.env.local

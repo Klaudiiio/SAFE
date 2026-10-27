@@ -90,6 +90,26 @@ def _profile_payload(user):
     }
 
 
+def _responder_payload(account):
+    return {
+        "id": account.user_id,
+        "username": account.username,
+        "name": account.name,
+        "department": account.department,
+        "contact_number": account.contact_number,
+        "email": account.user.email,
+        "user_type": "clinic_staff",
+    }
+
+
+def _authenticated_user_payload(user):
+    try:
+        return _profile_payload(user)
+    except DemoAccountProfile.DoesNotExist:
+        account = ResponderAccount.objects.select_related("user").filter(user=user).first()
+        return _responder_payload(account) if account else None
+
+
 def _request_json(request):
     try:
         return json.loads(request.body or "{}")
@@ -194,29 +214,37 @@ def login_view(request):
     if not isinstance(data, dict):
         return JsonResponse({"detail": "Send a valid JSON request."}, status=400)
 
-    email = data.get("email", "")
+    identifier = data.get("identifier", data.get("email", data.get("username", "")))
     password = data.get("password", "")
-    if not isinstance(email, str):
+    if not isinstance(identifier, str):
         return JsonResponse({"detail": "Enter a valid email address."}, status=400)
-    email = email.strip().lower()
-    try:
-        validate_email(email)
-    except ValidationError:
-        return JsonResponse({"detail": "Enter a valid email address."}, status=400)
+    identifier = identifier.strip()
+    is_email = "@" in identifier or "email" in data
+    if is_email:
+        identifier = identifier.lower()
+        try:
+            validate_email(identifier)
+        except ValidationError:
+            return JsonResponse({"detail": "Enter a valid email address."}, status=400)
     if not isinstance(password, str) or not password:
         return JsonResponse({"detail": "Enter your password."}, status=400)
-    account = User.objects.filter(email__iexact=email).first()
+    account = (
+        User.objects.filter(email__iexact=identifier).first()
+        if is_email
+        else User.objects.filter(username__iexact=identifier).first()
+    )
     user = authenticate(
         request,
-        username=account.get_username() if account else email,
+        username=account.get_username() if account else identifier,
         password=password,
     )
     if user is None or not user.is_active:
-        detail = "Email or password is incorrect."
+        detail = "Email, username, or password is incorrect."
         if settings.DEBUG:
-            existing_user = User.objects.filter(email__iexact=email).first()
+            existing_user = account
             if existing_user is None:
-                detail = "No demo account exists for this email. Choose Sign up to create one first."
+                if is_email:
+                    detail = "No demo account exists for this email. Choose Sign up to create one first."
             elif not existing_user.check_password(password):
                 detail = "That password does not match this account. Passwords are case-sensitive; use the exact password from signup."
             elif not existing_user.is_active:
@@ -226,22 +254,32 @@ def login_view(request):
     try:
         profile = user.safe_profile
     except DemoAccountProfile.DoesNotExist:
-        return JsonResponse({"detail": "This account is not configured for SAFE."}, status=403)
+        profile = None
 
-    if profile.verification_status not in {"demo_unverified", "demo_verified"}:
-        return JsonResponse({"detail": "This account is not enabled for the demo."}, status=403)
+    if profile:
+        if profile.verification_status not in {"demo_unverified", "demo_verified"}:
+            return JsonResponse({"detail": "This account is not enabled for the demo."}, status=403)
+        payload = _profile_payload(user)
+    else:
+        responder = ResponderAccount.objects.select_related("user").filter(user=user).first()
+        if user.is_staff or AdminAccount.objects.filter(user=user).exists():
+            return JsonResponse({"detail": "Admin accounts must sign in through the admin web console."}, status=403)
+        if not responder:
+            return JsonResponse({"detail": "This account is not configured for SAFE."}, status=403)
+        payload = _responder_payload(responder)
 
     login(request, user)
-    return JsonResponse({"user": _profile_payload(user)})
+    return JsonResponse({"user": payload})
 
 
 @require_GET
 def current_user(request):
     if not request.user.is_authenticated:
         return JsonResponse({"detail": "Sign in required."}, status=401)
-    try:
-        return JsonResponse({"user": _profile_payload(request.user)})
-    except DemoAccountProfile.DoesNotExist:
+    payload = _authenticated_user_payload(request.user)
+    if payload:
+        return JsonResponse({"user": payload})
+    else:
         return JsonResponse({"detail": "No SAFE user profile is active in this session."}, status=401)
 
 

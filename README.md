@@ -4,9 +4,9 @@ This project is set up for local development first. You can run the app on your 
 
 This project contains:
 
-- a Vite + React emergency workflow front end in the root workspace
-- a separate staff-only React admin console in `admin/`
-- a Django API in the `backend/` directory
+- the combined SAFE APP in `app/`, with role-based student, visitor, and clinic staff dashboards
+- the separate administrator web console in `web/`
+- the Django API and database migrations in `backend/`
 - a Supabase-ready Postgres configuration for later production deployment
 
 ## Local development (recommended for now)
@@ -20,17 +20,16 @@ py -m venv .venv
 pip install -r requirements.txt
 ```
 
-### 2) Create the local environment file
+### 2) Configure environment (optional for local development)
 
-```bash
-copy .env.example .env
-```
+Local development uses the default settings. To set a custom database or secret,
+copy `backend/.env.example` to `backend/.env` and edit the values.
 
 For local-only work, the default values are usually fine until you connect Supabase. If you want to use Supabase later, set:
 
 - `DATABASE_URL` to your Supabase Postgres URL
 - `SECRET_KEY` to a secure random value
-- `CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173`
+- `CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174`
 
 When `DATABASE_URL` points to the Supabase connection pooler, Django uses the
 transaction-pooler port (`6543`), disables persistent connections, and disables
@@ -51,20 +50,25 @@ cd backend
 python manage.py runserver 127.0.0.1:8000
 ```
 
-### 5) Run the frontend
+### 5) Run the app and admin web
 
-In a second terminal:
+In another terminal:
 
 ```bash
 npm install
 npm run dev
 ```
 
+In a third terminal, start the admin web:
+
+```bash
+npm run dev:web
+```
+
 Open:
 
-- Frontend: http://localhost:5173
-- Admin console: http://localhost:5173/admin/
-- Clinic staff portal: http://localhost:5173/clinic-staff/
+- SAFE APP: http://localhost:5173
+- Admin web: http://localhost:5174
 - Backend health: http://127.0.0.1:8000/api/health/
 
 ### Admin console
@@ -75,10 +79,10 @@ Create a Django staff account from the `backend/` directory:
 python manage.py createsuperuser
 ```
 
-Open http://localhost:5173/admin/ and sign in with that account's username and
+Open http://localhost:5174 and sign in with that account's username and
 password. The console provides staff-only incident review and response status/ETA
 updates, plus demo account verification and access controls. Admin API access is
-restricted to authenticated Django staff users. After signing in at `/admin/`,
+restricted to authenticated Django staff users. After signing in,
 choose **Create staff account** on the overview or **Create admin account** in
 the sidebar to add another staff login. The console also manages incident types,
 manual campus locations, and incident activity logs. New accounts receive staff permissions
@@ -105,40 +109,34 @@ The signed-in user's report history is private to that account. The app also
 provides a separate view of incident summaries from the past seven days; it
 omits report descriptions and reporter details.
 
-### Clinic staff portal
+### Role-based SAFE APP access
 
-Open http://localhost:5173/clinic-staff/ and sign in with a responder account
-created by an administrator in **Admin console → Clinic responders**. Clinic
-responders use separate non-admin Django accounts; their hashed passwords remain
-in Django's `auth_user` table. The portal includes a shared incident queue,
-responder availability, in-app alerts, patient contact and secure case messages,
-clinical notes, vitals, incident history, and response summaries.
+SAFE APP has a single sign-in and sign-up page. Student and visitor accounts
+created in the app open the user dashboard; clinic responder accounts created by
+an administrator in **Admin web → Clinic responders** open the clinic dashboard.
+Responder accounts remain separate non-admin Django accounts, and all account
+sessions and report data continue to use the backend API and migrations.
 
-The clinic staff app is also available as a separate Expo app for iOS, Android,
-and Expo web. Install dependencies once, then start Metro from its folder:
+The clinic dashboard includes a shared incident queue, responder availability,
+in-app alerts, patient contact and secure case messages, clinical notes, vitals,
+incident history, and response summaries. An ambulance request records and
+alerts the clinic team only; it does not dispatch an ambulance or contact
+emergency services.
 
-```powershell
-cd clinic-staff
-npm install
-npx expo start
-```
+The role-based user and clinic screens, sign-up/sign-in, and app components are
+implemented together in `app/src/app/App.tsx`. The app and admin web both use
+the Django API in `backend/`; run `python manage.py migrate` there to apply the
+existing database migrations.
 
-On a phone, connect to the same network as Django and allow Python through
-Windows Firewall if prompted. The app detects the Expo host IP for the backend;
-you can also enter the Django computer's IP address and port on the sign-in
-screen or in Settings. Use the Expo Go version compatible with SDK 58.
-
-Apply the reports migration before first use:
+Apply the backend migrations before first use:
 
 ```powershell
 cd backend
 python manage.py migrate
 ```
 
-An ambulance request in the portal records and alerts the clinic team only; it
-does not contact emergency services or dispatch an ambulance. This demo portal
-is not a substitute for emergency services or an approved clinical record
-system.
+The demo is not a substitute for emergency services or an approved clinical
+record system.
 
 ### One-command local startup
 
@@ -148,49 +146,13 @@ You can also run both together with:
 npm run dev:all
 ```
 
-This starts the Django API and the Vite frontend in separate terminals on your machine.
+This starts Django, SAFE APP, and the separate admin web in separate terminals.
 
 ## Demo sign-in
 
 The web app opens on a login screen. Demo signups work only while Django `DEBUG=True`.
 Use a fictional name, email such as `student@example.test`, and a demo password.
 Choose **Student** or **Visitor**; identity checks are temporarily disabled.
-
-### Run the native mobile app
-
-Expo runs the React Native app in `mobile/` directly. Vite is not required.
-
-In one terminal, start the API so your phone can reach it over your local network:
-
-```powershell
-npm run dev:api:lan
-```
-
-In another terminal:
-
-```powershell
-cd mobile
-npx expo start
-```
-
-The app automatically uses the Expo computer IP for the API address. If needed,
-edit the **Django API address** field in the app to your computer's local IP with
-`:8000`. Connect the phone and computer to the same network and allow Python
-through Windows Firewall when prompted. You do not need `npm run dev`.
-
-Because this workspace is stored in OneDrive, Metro file-watcher crashes may
-occur when running Expo directly. If that happens, use the workspace helper:
-
-```powershell
-.\start-expo.ps1
-```
-
-The helper runs the native app from a local AppData folder to avoid Metro
-file-watcher crashes in OneDrive. Keep the Django API running separately.
-
-The facility status and response metrics in the mobile home screen are demo
-values. Quick-contact buttons open the phone app, but currently use fictional
-`555-01xx` numbers; replace them with verified clinic contacts before real use.
 
 Sign-up is disabled when `DEBUG=False`. Accounts are not verified as USTP students or
 valid ID holders. Do not use real personal or medical information in this demo.
