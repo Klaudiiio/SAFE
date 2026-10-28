@@ -1,7 +1,9 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Activity, AlertOctagon, AlertTriangle, Ambulance, ArrowDown, ArrowLeft, ArrowRight, Battery, Bell, CalendarDays, Check, CheckCheck, CheckCircle, ChevronRight, ClipboardList, Clock, Clock3, CloudSun, Droplets, Heart, HeartPulse, Home, Info, LayoutDashboard, LoaderCircle, LogIn, LogOut, MapPin, Menu, MessageCircle, Mic, MicOff, Phone, Plus, RefreshCw, Search, Send, Settings, Shield, ShieldCheck, Signal, Stethoscope, Thermometer, User, UserPlus, UserRound, Users, Video, VideoOff, Wifi, Wind, X } from "lucide-react";
+// @ts-ignore CSS modules are handled by the bundler, not TypeScript.
 import "./clinic-staff.css";
+import { apiFetch } from "../api";
 // App.tsx
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -14,20 +16,28 @@ function App() {
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const apiBaseUrl = (import.meta.env.VITE_API_URL as string | undefined) || "";
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`${apiBaseUrl}/api/auth/me/`, { credentials: "include", signal: controller.signal })
-      .then(async (response) => response.ok ? response.json() : null)
-      .then((payload) => setCurrentUser(payload?.user ?? null))
-      .catch((error: unknown) => {
-        if (!(error instanceof Error && error.name === "AbortError")) setCurrentUser(null);
-      })
-      .finally(() => setAuthChecked(true));
+    const checkAuthentication = async () => {
+      try {
+        const csrfResponse = await apiFetch("/api/auth/csrf/", { signal: controller.signal });
+        if (!csrfResponse.ok) throw new Error("Could not initialize secure authentication.");
+        const response = await apiFetch("/api/auth/me/", { signal: controller.signal });
+        const payload = response.ok ? await response.json() : null;
+        setCurrentUser(payload?.user ?? null);
+      } catch (error) {
+        if (!(error instanceof Error && error.name === "AbortError")) {
+          setCurrentUser(null);
+        }
+      } finally {
+        if (!controller.signal.aborted) setAuthChecked(true);
+      }
+    };
+    void checkAuthentication();
 
     return () => controller.abort();
-  }, [apiBaseUrl]);
+  }, []);
 
   const handleAuthenticated = (user: AuthenticatedUser) => {
     setCurrentUser(user);
@@ -35,13 +45,8 @@ function App() {
   };
 
   const handleLogout = async () => {
-    const csrfResponse = await fetch(`${apiBaseUrl}/api/auth/csrf/`, { credentials: "include" });
-    if (!csrfResponse.ok) throw new Error("Could not start a secure sign-out request.");
-    const csrfPayload = await csrfResponse.json();
-    const response = await fetch(`${apiBaseUrl}/api/auth/logout/`, {
+    const response = await apiFetch("/api/auth/logout/", {
       method: "POST",
-      credentials: "include",
-      headers: { "X-CSRFToken": csrfPayload.csrf_token },
     });
     if (!response.ok) throw new Error("Could not sign out. Please try again.");
     setCurrentUser(null);
@@ -61,16 +66,8 @@ function App() {
     setSubmissionError(null);
 
     try {
-      const csrfResponse = await fetch(`${apiBaseUrl}/api/auth/csrf/`, { credentials: "include" });
-      if (!csrfResponse.ok) throw new Error("Could not start a secure report submission.");
-      const csrfPayload = await csrfResponse.json();
-      const response = await fetch(`${apiBaseUrl}/api/reports/`, {
+      const response = await apiFetch("/api/reports/", {
         method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRFToken": csrfPayload.csrf_token,
-        },
         body: JSON.stringify({
           incident_id: selectedIncident.id,
           incident_label: selectedIncident.label,
@@ -109,7 +106,7 @@ function App() {
           Checking sign-in...
         </div>
       ) : !currentUser ? (
-        <AuthScreen apiBaseUrl={apiBaseUrl} onAuthenticated={handleAuthenticated} />
+        <AuthScreen onAuthenticated={handleAuthenticated} />
       ) : currentUser.user_type === "clinic_staff" || currentUser.user_type === "responder" ? (
         <ClinicStaffApp onLogout={handleLogout} />
       ) : (
@@ -209,7 +206,7 @@ function App() {
             )}
           </AnimatePresence>
         </div>
-        {activeTab === "history" && <ReportHistory apiBaseUrl={apiBaseUrl} refreshKey={historyRefreshKey} />}
+        {activeTab === "history" && <ReportHistory refreshKey={historyRefreshKey} />}
         {activeTab === "account" && <AccountTab user={currentUser} onLogout={handleLogout} />}
       </main>
       <AppTabBar activeTab={activeTab} onChange={setActiveTab} />
@@ -272,6 +269,7 @@ interface Responder {
   availability_status: "available" | "unavailable" | "on_break";
   username: string;
   email: string;
+  user_type: string;
 }
 
 interface CaseRecord {
@@ -340,18 +338,10 @@ interface ReportSummary {
   by_status: Array<{ status: string; count: number }>;
 }
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) || "";
-
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   if (options.body) headers.set("Content-Type", "application/json");
-  if (options.method && options.method !== "GET") {
-    const tokenResponse = await fetch(`${API_BASE_URL}/api/auth/csrf/`, { credentials: "include" });
-    if (!tokenResponse.ok) throw new Error("Could not start a secure clinic request.");
-    const token = await tokenResponse.json() as { csrf_token: string };
-    headers.set("X-CSRFToken", token.csrf_token);
-  }
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers, credentials: "include" });
+  const response = await apiFetch(path, { ...options, headers });
   if (!response.ok) {
     let message = `Request failed (${response.status}).`;
     try {
@@ -686,7 +676,7 @@ function ClinicStaffApp({ onLogout }: { onLogout: () => void }) {
                     .catch((loadError: unknown) => setError(loadError instanceof Error ? loadError.message : "Could not open the notified case."));
                   setShowNotices(false);
                 }}>
-                  <span><strong>{notice.incident_label}</strong><small>{notice.message}</small><small>{dateTime(notice.created_at)}</small></span>
+                  <span><strong>{notice.incident_label}</strong><small>{notice.message}</small><small>Alert #{notice.id} · {pretty(notice.status)} · notice {dateTime(notice.created_at)}</small></span>
                   {notice.status === "new" && <i />}
                 </button>
               ))}
@@ -739,6 +729,15 @@ function DashboardPage({ dashboard, responder, loading, dashboardLoading, onRefr
   dashboard: Dashboard | null; responder: Responder; loading: boolean; dashboardLoading: boolean; onRefresh: () => void;
   onOpenCase: (record: CaseRecord) => void; onGoCases: () => void;
 }) {
+  const [selectedCaseId, setSelectedCaseId] = useState<number | null>(null);
+  const activeCases = (dashboard?.recent_cases ?? []).filter((item) =>
+    ["submitted", "acknowledged", "in_progress"].includes(item.status),
+  );
+  const selectedCase = activeCases.find((item) => item.id === selectedCaseId) ?? activeCases[0] ?? null;
+  const capacityPercent = dashboard?.responders_total
+    ? Math.min(100, Math.round((dashboard.responders_available / dashboard.responders_total) * 100))
+    : 0;
+
   return (
     <>
       <div className="clinic-page-heading">
@@ -746,29 +745,135 @@ function DashboardPage({ dashboard, responder, loading, dashboardLoading, onRefr
         <button className="clinic-secondary" onClick={onRefresh} disabled={loading}><RefreshCw size={16} className={loading ? "spin" : ""} /> Refresh</button>
       </div>
       {dashboardLoading ? <section className="clinic-panel"><LoadingLine message="Loading dashboard and notifications..." /></section> : <>
-      <section className="clinic-metrics">
-        <Metric label="Incoming cases" value={dashboard?.incoming_count ?? "—"} tone="mint" icon={Activity} note="Shared responder queue" />
-        <Metric label="Active responses" value={dashboard?.active_count ?? "—"} tone="blue" icon={HeartPulse} note="Currently being handled" />
+      <section className="clinic-metrics clinic-metrics-compact">
+        <Metric label="Incoming cases" value={dashboard?.incoming_count ?? "—"} tone="mint" icon={Activity} note="Awaiting clinic response" />
+        <Metric label="Active responses" value={dashboard?.active_count ?? "—"} tone="blue" icon={HeartPulse} note="In progress" />
         <Metric label="Urgent cases" value={dashboard?.urgent_open ?? "—"} tone="amber" icon={AlertTriangle} note="Needs prompt attention" />
-        <Metric label="Resolved today" value={dashboard?.resolved_today ?? "—"} tone="violet" icon={CheckCheck} note="Cases completed today" />
+        <Metric label="Resolved today" value={dashboard?.resolved_today ?? "—"} tone="violet" icon={CheckCheck} note="Completed today" />
       </section>
-      <div className="dashboard-grid">
-        <section className="clinic-panel">
-          <div className="panel-heading"><div><h2>Incoming cases</h2><p>New reports shared with clinic staff</p></div><button className="text-button" onClick={onGoCases}>View queue <ChevronRight size={15} /></button></div>
-          <CaseList cases={(dashboard?.recent_cases ?? []).filter((item) => ["submitted", "acknowledged", "in_progress"].includes(item.status)).slice(0, 5)} onOpen={onOpenCase} compact />
+      <div className="clinic-dashboard-grid">
+        <section className="clinic-panel dashboard-queue-panel">
+          <div className="panel-heading">
+            <div><h2>Incoming cases <span className="dashboard-count">{activeCases.length}</span></h2><p>Shared with the clinic response team</p></div>
+            <button className="text-button" onClick={onGoCases}>Full queue <ChevronRight size={15} /></button>
+          </div>
+          {activeCases.length ? (
+            <div className="dashboard-case-list">
+              {activeCases.map((record) => (
+                <button
+                  type="button"
+                  key={record.id}
+                  className={`dashboard-case-card ${selectedCase?.id === record.id ? "selected" : ""}`}
+                  onClick={() => setSelectedCaseId(record.id)}
+                  onDoubleClick={() => onOpenCase(record)}
+                  aria-pressed={selectedCase?.id === record.id}
+                >
+                  <span className={`case-symbol ${record.severity.toLowerCase() === "urgent" ? "urgent" : ""}`}><Activity size={17} /></span>
+                  <span className="dashboard-case-copy">
+                    <strong>{record.incident_label}</strong>
+                    <small>{record.building}{record.floor ? ` · ${record.floor}` : ""}</small>
+                    <small>{record.patient?.case_reference ?? `Case #${record.id}`} · {dateTime(record.created_at)}</small>
+                  </span>
+                  <span className={`severity-badge ${record.severity.toLowerCase()}`}>{pretty(record.severity)}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="No open cases" description="New incidents assigned to the clinic will appear here." />
+          )}
         </section>
-        <section className="clinic-panel responders-panel">
-          <div className="panel-heading"><div><h2>Clinic coverage</h2><p>Active responder availability</p></div><Users size={18} /></div>
-          <div className="coverage-count"><strong>{dashboard?.responders_available ?? "—"}</strong><span>available now</span></div>
-          <div className="coverage-track"><span style={{ width: `${dashboard?.responders_total ? Math.min(100, dashboard.responders_available / dashboard.responders_total * 100) : 0}%` }} /></div>
-          <p className="coverage-foot">{dashboard?.responders_available ?? 0} available out of {dashboard?.responders_total ?? 0} active responders</p>
-          <div className="coverage-notice"><Shield size={16} /><span>Cases are visible to all clinic responders. Please coordinate before taking action.</span></div>
+
+        <section className="clinic-panel dashboard-patient-panel">
+          {selectedCase ? (
+            <>
+              <div className="panel-heading dashboard-patient-heading">
+                <div><div className="clinic-kicker">PATIENT CASE DETAIL</div><h2>{selectedCase.incident_label}</h2><p>{selectedCase.patient?.case_reference ?? `Case #${selectedCase.id}`} · {selectedCase.building}{selectedCase.floor ? ` · ${selectedCase.floor}` : ""}</p></div>
+                <div className="dashboard-case-badges">
+                  <span className={`severity-badge ${selectedCase.severity.toLowerCase()}`}>{pretty(selectedCase.severity)}</span>
+                  <span className={`status-badge ${selectedCase.status}`}>{pretty(selectedCase.status)}</span>
+                </div>
+              </div>
+              <div className="dashboard-patient-summary">
+                <span className="profile-avatar large">{(selectedCase.patient?.name ?? "?").slice(0, 1).toUpperCase()}</span>
+                <div><strong>{selectedCase.patient?.name ?? "Unknown patient"}</strong><small>{selectedCase.patient?.account_type ? pretty(selectedCase.patient.account_type) : "Patient"} · reported {dateTime(selectedCase.created_at)}</small></div>
+              </div>
+              <div className="dashboard-detail-block">
+                <div className="dashboard-subheading"><Clock3 size={15} /><strong>Patient timeline</strong></div>
+                {selectedCase.timeline.length ? (
+                  <div className="dashboard-timeline">
+                    {selectedCase.timeline.slice(-4).map((event) => (
+                      <div className="dashboard-timeline-event" key={event.id}>
+                        <span className="timeline-dot" />
+                        <div><strong>{pretty(event.event_type)}</strong><small>{event.remarks || event.actor} · {dateTime(event.action_time)}</small></div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="dashboard-timeline">
+                    <div className="dashboard-timeline-event"><span className="timeline-dot" /><div><strong>Symptoms submitted</strong><small>{dateTime(selectedCase.created_at)}</small></div></div>
+                  </div>
+                )}
+              </div>
+              <div className="dashboard-detail-block dashboard-notes-preview">
+                <div className="dashboard-subheading"><Stethoscope size={15} /><strong>Treatment &amp; notes</strong></div>
+                {selectedCase.notes ? (
+                  <>
+                    {selectedCase.notes.diagnosis && <p><b>Assessment:</b> {selectedCase.notes.diagnosis}</p>}
+                    {selectedCase.notes.doctor_notes && <p>{selectedCase.notes.doctor_notes}</p>}
+                    {Object.entries(selectedCase.notes.vital_signs).length > 0 && (
+                      <div className="dashboard-vitals">
+                        {Object.entries(selectedCase.notes.vital_signs).slice(0, 4).map(([label, value]) => <div key={label}><small>{pretty(label)}</small><strong>{value}</strong></div>)}
+                      </div>
+                    )}
+                    {selectedCase.notes.actions_taken.length > 0 && <p><b>Actions:</b> {selectedCase.notes.actions_taken.join(" · ")}</p>}
+                  </>
+                ) : <p className="dashboard-note-empty">No clinical notes have been added to this case yet.</p>}
+              </div>
+              {selectedCase.description && <p className="dashboard-case-description">{selectedCase.description}</p>}
+            </>
+          ) : (
+            <div className="dashboard-detail-empty"><span><UserRound size={22} /></span><strong>Select an incoming case</strong><p>Patient details and the response timeline will appear here.</p></div>
+          )}
         </section>
+
+        <aside className="dashboard-side-column">
+          <section className="clinic-panel dashboard-capacity-panel">
+            <div className="panel-heading"><div><h2>Clinic capacity</h2><p>Active responder availability</p></div><Users size={18} /></div>
+            <div className="dashboard-capacity-value"><strong>{capacityPercent}%</strong><span>available</span></div>
+            <div className="coverage-track"><span style={{ width: `${capacityPercent}%` }} /></div>
+            <div className="dashboard-staff-counts">
+              <div><span className="dashboard-count-icon"><UserRound size={17} /></span><strong>{dashboard?.responders_available ?? "—"}</strong><small>Available</small></div>
+              <div><span className="dashboard-count-icon"><Users size={17} /></span><strong>{dashboard?.responders_total ?? "—"}</strong><small>Active responders</small></div>
+            </div>
+            <p className="coverage-notice"><Shield size={15} /> Cases are shared across the responder team.</p>
+          </section>
+
+          <section className="clinic-panel dashboard-responder-panel">
+            <div className="panel-heading"><div><h2>Responder profile</h2><p>Clinic staff account</p></div><Stethoscope size={18} /></div>
+            <div className="dashboard-responder-identity"><span className="profile-avatar">{responder.name.slice(0, 1).toUpperCase()}</span><div><strong>{responder.name}</strong><small>{responder.department}</small></div></div>
+            <dl className="dashboard-responder-details">
+              <div><dt>Responder ID</dt><dd>#{responder.user_id}</dd></div>
+              <div><dt>Username</dt><dd>{responder.username}</dd></div>
+              <div><dt>Contact</dt><dd>{responder.contact_number || "Not provided"}</dd></div>
+              <div><dt>Account type</dt><dd>{pretty(responder.user_type)}</dd></div>
+            </dl>
+            <div className="dashboard-availability"><span className={`availability-dot ${responder.availability_status}`} /> {pretty(responder.availability_status)}</div>
+          </section>
+
+          {selectedCase && (
+            <section className="clinic-panel dashboard-communication-panel">
+              <div className="panel-heading"><div><h2>Communication</h2><p>Contact the patient about this case</p></div><MessageCircle size={18} /></div>
+              {selectedCase.patient?.phone_number ? (
+                <a className="clinic-primary wide" href={`tel:${selectedCase.patient.phone_number}`}><Phone size={15} /> Call patient</a>
+              ) : (
+                <button className="clinic-secondary wide" disabled><Phone size={15} /> No phone number</button>
+              )}
+              <button className="clinic-secondary wide" onClick={() => onOpenCase(selectedCase)}><MessageCircle size={15} /> Open secure case messages</button>
+              <button className="clinic-primary wide dashboard-open-case" onClick={() => onOpenCase(selectedCase)}><ChevronRight size={15} /> Open case workspace</button>
+            </section>
+          )}
+        </aside>
       </div>
-      <section className="clinic-panel">
-        <div className="panel-heading"><div><h2>Recent activity</h2><p>Latest incidents across SAFE</p></div><Clock3 size={18} /></div>
-        <CaseList cases={dashboard?.recent_cases ?? []} onOpen={onOpenCase} />
-      </section>
       </>}
     </>
   );
@@ -974,7 +1079,6 @@ export interface AuthenticatedUser {
 }
 
 interface AuthScreenProps {
-  apiBaseUrl: string;
   onAuthenticated: (user: AuthenticatedUser) => void;
 }
 
@@ -1011,7 +1115,7 @@ function getApiErrorMessage(payload: AuthApiPayload): string | undefined {
   return undefined;
 }
 
-function AuthScreen({ apiBaseUrl, onAuthenticated }: AuthScreenProps) {
+function AuthScreen({ onAuthenticated }: AuthScreenProps) {
   const [mode, setMode] = useState<AuthMode>("login");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -1045,41 +1149,22 @@ function AuthScreen({ apiBaseUrl, onAuthenticated }: AuthScreenProps) {
     setIsSubmitting(true);
 
     try {
-      const csrfResponse = await fetch(`${apiBaseUrl}/api/auth/csrf/`, { credentials: "include" });
-      const csrfPayload = await readAuthApiPayload(csrfResponse);
-
-      if (!csrfResponse.ok || !csrfPayload.csrf_token) {
-        throw new Error(
-          csrfResponse.status === 403
-            ? "Security check expired. Refresh the page and try again."
-            : "Could not reach the SAFE server. Check that Django is running."
-        );
-      }
-
       const isSignup = mode === "signup";
-      const response = await fetch(
-        `${apiBaseUrl}/api/auth/${isSignup ? "signup" : "login"}/`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            "X-CSRFToken": csrfPayload.csrf_token,
-          },
-          body: JSON.stringify(isSignup
-            ? {
-                display_name: displayName,
-                username,
-                email,
-                student_id: studentId,
-                course,
-                phone_number: phoneNumber,
-                account_type: accountType,
-                password,
-              }
-            : { identifier: identifier.trim(), password }),
-        }
-      );
+      const response = await apiFetch(`/api/auth/${isSignup ? "signup" : "login"}/`, {
+        method: "POST",
+        body: JSON.stringify(isSignup
+          ? {
+              display_name: displayName,
+              username,
+              email,
+              student_id: studentId,
+              course,
+              phone_number: phoneNumber,
+              account_type: accountType,
+              password,
+            }
+          : { identifier: identifier.trim(), password }),
+      });
 
       const result = await readAuthApiPayload(response);
       if (!response.ok) {
@@ -1340,11 +1425,10 @@ interface ReportRecord {
 interface RecentReportRecord extends Omit<ReportRecord, "description"> {}
 
 interface ReportHistoryProps {
-  apiBaseUrl: string;
   refreshKey: number;
 }
 
-export function ReportHistory({ apiBaseUrl, refreshKey }: ReportHistoryProps) {
+export function ReportHistory({ refreshKey }: ReportHistoryProps) {
   const [reports, setReports] = useState<ReportRecord[]>([]);
   const [recentReports, setRecentReports] = useState<RecentReportRecord[]>([]);
   const [historyView, setHistoryView] = useState<"mine" | "recent">("mine");
@@ -1363,7 +1447,7 @@ export function ReportHistory({ apiBaseUrl, refreshKey }: ReportHistoryProps) {
     setErrorMessage("");
 
     const fetchReportList = async <T,>(path: string): Promise<T[]> => {
-      const response = await fetch(`${apiBaseUrl}${path}`, { credentials: "include", signal: controller.signal });
+      const response = await apiFetch(path, { signal: controller.signal });
       if (!response.ok) throw new Error(`Could not load reports (${response.status}).`);
       const data: unknown = await response.json();
       if (!Array.isArray(data)) throw new Error("The reports response was not a list.");
@@ -1386,7 +1470,7 @@ export function ReportHistory({ apiBaseUrl, refreshKey }: ReportHistoryProps) {
       });
 
     return () => controller.abort();
-  }, [apiBaseUrl, refreshKey, retryCount]);
+  }, [refreshKey, retryCount]);
 
   const visibleReports = historyView === "mine" ? reports : recentReports;
 
@@ -1396,8 +1480,7 @@ export function ReportHistory({ apiBaseUrl, refreshKey }: ReportHistoryProps) {
     setMessageError("");
     const loadMessages = async () => {
       try {
-        const response = await fetch(`${apiBaseUrl}/api/reports/${messageReportId}/messages/`, {
-          credentials: "include",
+        const response = await apiFetch(`/api/reports/${messageReportId}/messages/`, {
           signal: controller.signal,
         });
         const payload: unknown = await response.json();
@@ -1420,7 +1503,7 @@ export function ReportHistory({ apiBaseUrl, refreshKey }: ReportHistoryProps) {
       controller.abort();
       window.clearInterval(interval);
     };
-  }, [apiBaseUrl, messageReportId]);
+  }, [messageReportId]);
 
   const sendCaseMessage = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1428,13 +1511,8 @@ export function ReportHistory({ apiBaseUrl, refreshKey }: ReportHistoryProps) {
     setMessageBusy(true);
     setMessageError("");
     try {
-      const csrfResponse = await fetch(`${apiBaseUrl}/api/auth/csrf/`, { credentials: "include" });
-      const csrfPayload = await csrfResponse.json() as { csrf_token?: string };
-      if (!csrfResponse.ok || !csrfPayload.csrf_token) throw new Error("Could not start a secure message.");
-      const response = await fetch(`${apiBaseUrl}/api/reports/${messageReportId}/messages/`, {
+      const response = await apiFetch(`/api/reports/${messageReportId}/messages/`, {
         method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfPayload.csrf_token },
         body: JSON.stringify({ message: messageDraft.trim() }),
       });
       const payload = await response.json() as { detail?: string; id?: number; message?: string; created_at?: string; sender_name?: string; sender_role?: string };
@@ -2750,12 +2828,11 @@ export function Step2_Incident({ onSelect, onBack }: Step2Props) {
   const [incidents, setIncidents] = useState<IncidentType[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const apiBaseUrl = (import.meta.env.VITE_API_URL as string | undefined) || "";
   const loadIncidentTypes = async () => {
     setLoading(true);
     setLoadError("");
     try {
-      const response = await fetch(`${apiBaseUrl}/api/incident-types/`);
+      const response = await apiFetch("/api/incident-types/");
       if (!response.ok) throw new Error(`Could not load incident types (HTTP ${response.status}).`);
       const types = await response.json() as IncidentTypeResponse[];
       if (!Array.isArray(types)) throw new Error("The server returned an invalid incident type list.");

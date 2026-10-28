@@ -46,31 +46,47 @@ export async function api<T>(
 
   const method = options.method ?? "GET";
   const headers: Record<string, string> = {};
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
 
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
 
-  if (method !== "GET") {
-    const csrfResponse = await fetch(`${API_BASE_URL}/api/auth/csrf/`, {
-      credentials: "include",
-    });
-    const csrfPayload = (await readPayload(csrfResponse)) as CsrfResponse | null;
-    if (!csrfResponse.ok || !csrfPayload?.csrf_token) {
-      throw new Error("Could not start a secure request. Check that the SAFE API is available.");
+  try {
+    if (method !== "GET") {
+      const csrfResponse = await fetch(`${API_BASE_URL}/api/auth/csrf/`, {
+        credentials: "include",
+        signal: controller.signal,
+      });
+      const csrfPayload = (await readPayload(csrfResponse)) as CsrfResponse | null;
+      if (!csrfResponse.ok || !csrfPayload?.csrf_token) {
+        throw new Error("Could not start a secure request. Check that the SAFE API is available.");
+      }
+      headers["X-CSRFToken"] = csrfPayload.csrf_token;
     }
-    headers["X-CSRFToken"] = csrfPayload.csrf_token;
-  }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method,
-    credentials: "include",
-    headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  });
-  const payload = await readPayload(response);
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      credentials: "include",
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: controller.signal,
+    });
+    const payload = await readPayload(response);
 
-  if (!response.ok) {
-    throw new Error(getErrorMessage(payload, response.status));
+    if (!response.ok) {
+      throw new Error(getErrorMessage(payload, response.status));
+    }
+    if (response.status === 204) return undefined as T;
+    return payload as T;
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error("The SAFE API did not respond within 10 seconds. Check that Django is running and EXPO_PUBLIC_API_URL points to your computer's reachable IP.");
+    }
+    if (error instanceof TypeError) {
+      throw new Error("Could not reach the SAFE API. Check the EXPO_PUBLIC_API_URL in expo-native/.env and confirm your phone and computer are on the same Wi-Fi.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-  if (response.status === 204) return undefined as T;
-  return payload as T;
 }

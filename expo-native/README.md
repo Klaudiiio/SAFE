@@ -4,6 +4,22 @@ This is the native React Native app, upgraded to Expo SDK 58. It talks to the ex
 
 > **Expo Go compatibility:** Expo's SDK 58 transition guidance currently recommends SDK 57 for physical-device Expo Go. This SDK 58 project may not open in the Expo Go app on your phone until Expo Go adds SDK 58 support. Use an SDK 58 development build in the meantime, or switch the project back to SDK 57 for Expo Go.
 
+## Start the Expo app
+
+From the repository root, use the root script so npm selects this project's SDK-local Expo CLI:
+
+```powershell
+npm run start:mobile
+```
+
+Alternatively, run the command from this directory:
+
+```powershell
+npx expo start
+```
+
+Do not run bare `npx expo start` from the repository root. The root package is the Vite web app and does not own the Expo SDK dependencies; that can select a globally cached legacy Expo CLI instead.
+
 ## Run on a phone with Expo Go
 
 1. Install the **Expo Go** app on your phone.
@@ -23,11 +39,10 @@ This is the native React Native app, upgraded to Expo SDK 58. It talks to the ex
    ```
 
    If the virtual environment is not set up yet, follow the Python dependency and migration steps in the root README first.
-5. In another terminal:
+5. In another terminal, from the repository root:
 
    ```powershell
-   cd expo-native
-   npm start
+   npm run start:mobile
    ```
 
 6. When the installed Expo Go version supports SDK 58, scan the QR code shown by Expo Go. Allow the Windows Firewall prompt for private networks if it appears. Until then, open this project in an SDK 58 development build instead.

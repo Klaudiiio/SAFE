@@ -2,6 +2,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -85,6 +86,10 @@ type Responder = {
   name: string;
   department: string;
   availability_status: "available" | "unavailable" | "on_break";
+  contact_number?: string;
+  username?: string;
+  email?: string;
+  user_type?: string;
 };
 
 type Notice = {
@@ -128,20 +133,21 @@ type ReportSummary = {
 type Tab = "home" | "history" | "location" | "account";
 type ClinicPage =
   | "overview" | "cases" | "patients" | "timeline"
-  | "messages" | "reports" | "resources" | "settings" | "notifications";
+  | "messages" | "reports" | "resources" | "settings" | "notifications" | "more";
+type ClinicTab = "overview" | "cases" | "patients" | "messages" | "more";
 type CaseBucket = "incoming" | "active" | "completed" | "all";
 type ReportStep = "idle" | "incident" | "details" | "consent" | "sent";
 
 const colors = {
-  bg: "#080A0F",
-  panel: "#10151E",
-  panelAlt: "#151D29",
-  text: "#F0F4FF",
-  muted: "#91A0B8",
-  line: "rgba(255,255,255,0.09)",
-  red: "#EF4444",
-  green: "#22C55E",
-  blue: "#60A5FA",
+  bg: "#07111C",
+  panel: "#0E1B2A",
+  panelAlt: "#16283A",
+  text: "#F3F7FC",
+  muted: "#96A9BF",
+  line: "rgba(180,205,230,0.12)",
+  red: "#F15A4A",
+  green: "#38C6A5",
+  blue: "#5BB6D5",
 };
 
 export default function App() {
@@ -176,17 +182,28 @@ export default function App() {
   if (!apiConfigured) {
     return (
       <Frame>
-        <Title>Connect SAFE to your computer</Title>
-        <Card>
-          <Body>Create expo-native/.env with EXPO_PUBLIC_API_URL=http://YOUR_PC_LAN_IP:8000.</Body>
-          <Body>Start Django on 0.0.0.0:8000, then restart Expo with npm start -- --clear.</Body>
-          <Body>Use your computer's Wi-Fi IPv4 address, not localhost or 127.0.0.1.</Body>
-        </Card>
+        <View style={styles.connectionState}>
+          <Text style={styles.brandMark}>SAFE</Text>
+          <Title>Connect to your SAFE server</Title>
+          <Card>
+            <Body>Create expo-native/.env with EXPO_PUBLIC_API_URL set to your computer's Wi-Fi IPv4 address.</Body>
+            <Body>Start Django on 0.0.0.0:8000, then restart Expo with npm run start:mobile -- --clear.</Body>
+            <Body>Do not use localhost or 127.0.0.1 on a physical phone.</Body>
+          </Card>
+        </View>
       </Frame>
     );
   }
   if (checkingSession) {
-    return <Frame><ActivityIndicator color={colors.red} size="large" /><Body>Connecting to SAFE...</Body></Frame>;
+    return (
+      <Frame>
+        <View style={styles.connectionState}>
+          <ActivityIndicator color={colors.red} size="large" />
+          <Title>Connecting securely</Title>
+          <Body>Checking your SAFE account…</Body>
+        </View>
+      </Frame>
+    );
   }
   if (!user) return <AuthScreen onAuthenticated={setUser} initialError={sessionError} />;
   if (user.user_type === "clinic_staff" || user.user_type === "responder") {
@@ -225,21 +242,23 @@ function ActionButton({
   onPress,
   disabled = false,
   tone = "red",
+  variant,
 }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
   tone?: "red" | "green" | "neutral" | "blue";
+  variant?: "clinic";
 }) {
-  const backgroundColor = tone === "green" ? "#14532D"
+  const backgroundColor = tone === "green" ? "#17634F"
     : tone === "neutral" ? colors.panelAlt
-      : tone === "blue" ? "#172554" : "#7F1D1D";
+      : tone === "blue" ? "#16495C" : "#B94034";
   return (
     <Pressable
       accessibilityRole="button"
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.button, { backgroundColor, opacity: disabled ? 0.45 : pressed ? 0.75 : 1 }]}
+      style={({ pressed }) => [styles.button, variant === "clinic" && styles.clinicButton, { backgroundColor, opacity: disabled ? 0.45 : pressed ? 0.75 : 1 }]}
     >
       <Text style={styles.buttonText}>{label}</Text>
     </Pressable>
@@ -248,7 +267,7 @@ function ActionButton({
 
 function Field({
   label, value, onChangeText, placeholder, secureTextEntry = false,
-  keyboardType, multiline = false, autoCapitalize,
+  keyboardType, multiline = false, autoCapitalize, variant,
 }: {
   label: string;
   value: string;
@@ -258,6 +277,7 @@ function Field({
   keyboardType?: "default" | "email-address" | "phone-pad";
   multiline?: boolean;
   autoCapitalize?: "none" | "sentences" | "words";
+  variant?: "clinic";
 }) {
   return (
     <View style={styles.field}>
@@ -269,9 +289,9 @@ function Field({
         multiline={multiline}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor="#66758D"
+        placeholderTextColor={variant === "clinic" ? "#8B9890" : "#66758D"}
         secureTextEntry={secureTextEntry}
-        style={[styles.input, multiline && styles.multiline]}
+        style={[styles.input, variant === "clinic" && styles.clinicInput, multiline && styles.multiline]}
         value={value}
       />
     </View>
@@ -287,9 +307,13 @@ function ErrorBanner({ children }: { children: string }) {
   );
 }
 
-function ScreenScroll({ children }: { children: React.ReactNode }) {
+function ScreenScroll({ children, variant }: { children: React.ReactNode; variant?: "clinic" }) {
   return (
-    <ScrollView style={styles.flex} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      style={[styles.flex, variant === "clinic" && styles.clinicScroll]}
+      contentContainerStyle={[styles.scrollContent, variant === "clinic" && styles.clinicScrollContent]}
+      keyboardShouldPersistTaps="handled"
+    >
       {children}
     </ScrollView>
   );
@@ -342,45 +366,63 @@ function AuthScreen({
   return (
     <Frame>
       <ScreenScroll>
-        <View style={styles.brand}>
-          <Text style={styles.brandMark}>SAFE</Text>
-          <SmallLabel>RESPONSE NETWORK</SmallLabel>
-          <Title>{mode === "login" ? "Welcome back" : "Create your account"}</Title>
-          <Body>Sign in with your SAFE account to continue.</Body>
-        </View>
-        <View style={styles.row}>
-          <ActionButton label="Log in" onPress={() => { setMode("login"); setError(""); }} tone={mode === "login" ? "red" : "neutral"} />
-          <ActionButton label="Sign up" onPress={() => { setMode("signup"); setError(""); }} tone={mode === "signup" ? "red" : "neutral"} />
-        </View>
-        <Card>
-          {mode === "signup" ? (
-            <>
-              <Field label="FULL NAME" value={displayName} onChangeText={setDisplayName} />
-              <Field label="USERNAME" value={username} onChangeText={setUsername} autoCapitalize="none" />
-              <View style={styles.row}>
-                {(["student", "visitor"] as const).map((choice) => (
-                  <ActionButton
-                    key={choice}
-                    label={capitalize(choice)}
-                    onPress={() => setAccountType(choice)}
-                    tone={accountType === choice ? "blue" : "neutral"}
-                  />
-                ))}
+        <View style={styles.authShell}>
+          <View style={styles.brand}>
+            <View style={styles.brandRow}>
+              <View style={styles.brandGlyph}><Text style={styles.brandGlyphText}>S</Text></View>
+              <View>
+                <Text style={styles.brandMark}>SAFE</Text>
+                <Text style={styles.brandCaption}>RESPONSE NETWORK</Text>
               </View>
-              <Field label="EMAIL ADDRESS" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-              <Field label="STUDENT ID" value={studentId} onChangeText={setStudentId} />
-              <Field label="COURSE" value={course} onChangeText={setCourse} />
-              <Field label="PHONE NUMBER" value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" />
-            </>
-          ) : (
-            <Field label="EMAIL OR USERNAME" value={identifier} onChangeText={setIdentifier} autoCapitalize="none" />
-          )}
-          <Field label="PASSWORD" value={password} onChangeText={setPassword} secureTextEntry />
-          <ErrorBanner>{error}</ErrorBanner>
-          <ActionButton label={busy ? "Please wait..." : mode === "login" ? "Sign in" : "Create account"} disabled={busy} onPress={() => void submit()} />
-          {mode === "signup" ? <Body>Demo signup is available only while the local Django server is in debug mode.</Body> : null}
-        </Card>
-        <Body style={styles.disclaimer}>Use fictional details for this demo. SAFE is not an emergency-services dispatcher.</Body>
+            </View>
+            <Text style={styles.authTitle}>{mode === "login" ? "Welcome back." : "Create your account."}</Text>
+            <Body>Sign in with your SAFE account to continue.</Body>
+          </View>
+          <View style={styles.segmented}>
+            {(["login", "signup"] as const).map((choice) => (
+              <Pressable
+                key={choice}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: mode === choice }}
+                onPress={() => { setMode(choice); setError(""); }}
+                style={[styles.segment, mode === choice && styles.segmentActive]}
+              >
+                <Text style={[styles.segmentText, mode === choice && styles.segmentTextActive]}>
+                  {choice === "login" ? "Log in" : "Create account"}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Card style={styles.authCard}>
+            {mode === "signup" ? (
+              <>
+                <Field label="FULL NAME" value={displayName} onChangeText={setDisplayName} />
+                <Field label="USERNAME" value={username} onChangeText={setUsername} autoCapitalize="none" />
+                <View style={styles.row}>
+                  {(["student", "visitor"] as const).map((choice) => (
+                    <ActionButton
+                      key={choice}
+                      label={capitalize(choice)}
+                      onPress={() => setAccountType(choice)}
+                      tone={accountType === choice ? "blue" : "neutral"}
+                    />
+                  ))}
+                </View>
+                <Field label="EMAIL ADDRESS" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+                <Field label="STUDENT ID" value={studentId} onChangeText={setStudentId} />
+                <Field label="COURSE" value={course} onChangeText={setCourse} />
+                <Field label="PHONE NUMBER" value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" />
+              </>
+            ) : (
+              <Field label="EMAIL OR USERNAME" value={identifier} onChangeText={setIdentifier} autoCapitalize="none" />
+            )}
+            <Field label="PASSWORD" value={password} onChangeText={setPassword} secureTextEntry />
+            <ErrorBanner>{error}</ErrorBanner>
+            <ActionButton label={busy ? "Please wait..." : mode === "login" ? "Sign in" : "Create account"} disabled={busy} onPress={() => void submit()} />
+            {mode === "signup" ? <Body>Demo signup is available only while the local Django server is in debug mode.</Body> : null}
+          </Card>
+          <Body style={styles.disclaimer}>Use fictional details for this demo. SAFE is not an emergency-services dispatcher.</Body>
+        </View>
       </ScreenScroll>
     </Frame>
   );
@@ -471,13 +513,16 @@ function UserScreen({ user, onLogout }: { user: User; onLogout: () => Promise<vo
           <ScreenScroll>
             {step === "idle" && (
               <>
-                <Card>
-                  <SmallLabel>MEDICAL INCIDENT RESPONSE</SmallLabel>
-                  <Title>Need help?</Title>
-                  <Body>Start an incident report to alert the clinic response team.</Body>
+                <Card style={styles.heroCard}>
+                  <SmallLabel>CAMPUS RESPONSE</SmallLabel>
+                  <Text style={styles.heroTitle}>Need help?</Text>
+                  <Body>Send your location and incident details directly to the campus clinic team.</Body>
                   <ActionButton label={busy ? "Loading..." : "Start an emergency report"} disabled={busy} onPress={() => void startReport()} />
                 </Card>
-                <Card><SmallLabel>IMPORTANT</SmallLabel><Body>This app records a report for the campus clinic. It does not dispatch an ambulance or contact emergency services.</Body></Card>
+                <Card style={styles.noticeCard}>
+                  <SmallLabel>IMPORTANT</SmallLabel>
+                  <Body>This app does not contact emergency services or dispatch an ambulance. Call your local emergency number if you need immediate help.</Body>
+                </Card>
               </>
             )}
             {step === "incident" && (
@@ -555,7 +600,10 @@ function UserScreen({ user, onLogout }: { user: User; onLogout: () => Promise<vo
         )}
       </View>
       <TabBar active={tab} onChange={setTab} items={[
-        ["home", "Home"], ["history", "History"], ["location", "Location"], ["account", "Account"],
+        ["home", "Home", "⌂"],
+        ["history", "History", "◷"],
+        ["location", "Location", "⌖"],
+        ["account", "Account", "♙"],
       ]} />
     </Frame>
   );
@@ -676,6 +724,7 @@ function ClinicScreen({ responderName, onLogout }: { responderName: string; onLo
   const [page, setPage] = useState<ClinicPage>("overview");
   const [responder, setResponder] = useState<Responder | null>(null);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [incomingCases, setIncomingCases] = useState<CaseRecord[]>([]);
   const [cases, setCases] = useState<CaseRecord[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [report, setReport] = useState<ReportSummary | null>(null);
@@ -694,12 +743,14 @@ function ClinicScreen({ responderName, onLogout }: { responderName: string; onLo
 
   const loadOverview = async () => {
     try {
-      const [dashboardData, noticeData] = await Promise.all([
+      const [dashboardData, noticeData, incomingData] = await Promise.all([
         api<Dashboard>("/api/clinic/dashboard/"),
         api<Notice[]>("/api/clinic/notifications/"),
+        api<CaseRecord[]>("/api/clinic/cases/?bucket=incoming"),
       ]);
       setDashboard(dashboardData);
       setNotices(noticeData);
+      setIncomingCases(incomingData);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Could not load clinic dashboard.");
     }
@@ -889,11 +940,31 @@ function ClinicScreen({ responderName, onLogout }: { responderName: string; onLo
     }
   };
 
-  const pageItems: Array<[ClinicPage, string]> = [
-    ["overview", "Overview"], ["cases", "Cases"], ["patients", "Patients"],
-    ["timeline", "Timeline"], ["messages", "Messages"], ["reports", "Reports"],
-    ["resources", "Resources"], ["settings", "Settings"],
+  const callPatient = async (phoneNumber: string) => {
+    try {
+      await Linking.openURL(`tel:${phoneNumber}`);
+    } catch (callError) {
+      setError(callError instanceof Error ? callError.message : "Could not open the phone app.");
+    }
+  };
+
+  const pageItems: Array<[ClinicTab, string, string]> = [
+    ["overview", "Home", "⌂"],
+    ["cases", "Cases", "▤"],
+    ["patients", "Patients", "♙"],
+    ["messages", "Messages", "✉"],
+    ["more", "More", "•••"],
   ];
+  const moreItems: Array<[ClinicPage, string, string, string]> = [
+    ["timeline", "Incident timeline", "Review recent case activity", "◷"],
+    ["reports", "Reports", "Clinic activity summary", "▥"],
+    ["resources", "Resources", "Response guidance and reminders", "♡"],
+    ["settings", "Settings", "Responder profile and availability", "⚙"],
+    ["notifications", "Notifications", "Assigned case alerts", "♢"],
+  ];
+  const isMorePage = page === "timeline" || page === "reports" || page === "resources"
+    || page === "settings" || page === "notifications";
+  const activeTab: ClinicTab = isMorePage ? "more" : page;
   const navigate = (nextPage: ClinicPage) => {
     setPage(nextPage);
     if (nextPage !== "cases") setSelectedCase(null);
@@ -902,49 +973,92 @@ function ClinicScreen({ responderName, onLogout }: { responderName: string; onLo
 
   return (
     <Frame>
-      <View style={styles.topbar}>
-        <View><Text style={styles.brandMark}>SAFE CLINIC</Text><Text style={styles.subtitle}>{responder?.name ?? responderName}</Text></View>
+      <View style={styles.clinicApp}>
+      <View style={[styles.topbar, styles.clinicTopbar]}>
+        <View><Text style={[styles.brandMark, styles.clinicBrandMark]}>SAFE CLINIC</Text><Text style={[styles.subtitle, styles.clinicSubtitle]}>{responder?.name ?? responderName}</Text></View>
         <Pressable onPress={() => navigate("notifications")}>
           <Text style={styles.network}>Alerts {notices.filter((item) => item.status === "new").length}</Text>
         </Pressable>
       </View>
-      <View style={styles.clinicNav}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {pageItems.map(([id, label]) => (
-            <Pressable key={id} onPress={() => navigate(id)} style={[styles.navItem, page === id && styles.navItemActive]}>
-              <Text style={[styles.navText, page === id && styles.navTextActive]}>{label}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      </View>
-      <View style={styles.flex}>
+      <View style={[styles.flex, styles.clinicContent]}>
         <ErrorBanner>{error}</ErrorBanner>
         {page === "overview" && (
-          <ScreenScroll>
-            <Title>Clinic dashboard</Title>
-            <View style={styles.metricGrid}>
-              <Metric label="Incoming" value={dashboard?.incoming_count} />
-              <Metric label="Active" value={dashboard?.active_count} />
-              <Metric label="Urgent open" value={dashboard?.urgent_open} />
-              <Metric label="Resolved today" value={dashboard?.resolved_today} />
+          <ScreenScroll variant="clinic">
+            <View style={styles.clinicWelcome}>
+              <View>
+                <Text style={styles.clinicMetricLabel}>SAFE RESPONSE NETWORK</Text>
+                <Text style={styles.clinicWelcomeTitle}>Clinic dashboard</Text>
+                <Body>Welcome, {(responder?.name ?? responderName).split(" ")[0]}</Body>
+              </View>
+              <Pressable style={styles.alertButton} onPress={() => navigate("notifications")} accessibilityLabel="Open notifications">
+                <Text style={styles.alertButtonIcon}>♢</Text>
+                {notices.some((item) => item.status === "new") ? <Text style={styles.alertBadge}>{notices.filter((item) => item.status === "new").length}</Text> : null}
+              </Pressable>
             </View>
-            <Card>
-              <SmallLabel>RESPONDER COVERAGE</SmallLabel>
-              <Body>{dashboard?.responders_available ?? "—"} available / {dashboard?.responders_total ?? "—"} active</Body>
-              <Body>{dashboard?.unread_notifications ?? 0} unread notifications</Body>
+            <View style={styles.metricGrid}>
+              <Metric label="Incoming" value={dashboard?.incoming_count} tone="red" />
+              <Metric label="Active" value={dashboard?.active_count} tone="blue" />
+              <Metric label="Urgent" value={dashboard?.urgent_open} tone="amber" />
+              <Metric label="Resolved today" value={dashboard?.resolved_today} tone="green" />
+            </View>
+            <Card style={styles.mobileSectionCard}>
+              <View style={styles.sectionHeading}>
+                <View><Text style={styles.sectionTitle}>Incoming cases</Text><Text style={styles.sectionCaption}>Select a case to review patient details</Text></View>
+                <Pressable onPress={() => navigate("cases")}><Text style={styles.sectionLink}>View all →</Text></Pressable>
+              </View>
+              {incomingCases.slice(0, 6).map((record) => <CaseCard key={record.id} record={record} onPress={() => void openCase(record.id)} />)}
+              {incomingCases.length === 0
+                ? <Text style={styles.emptyCases}>No open cases right now.</Text>
+                : null}
             </Card>
-            <SmallLabel>RECENT CASES</SmallLabel>
-            {(dashboard?.recent_cases ?? []).map((record) => <CaseCard key={record.id} record={record} onPress={() => void openCase(record.id)} />)}
-            <ActionButton label="Open case queue" onPress={() => navigate("cases")} tone="blue" />
+            <Card style={styles.mobileSectionCard}>
+              <View style={styles.sectionHeading}>
+                <View><Text style={styles.sectionTitle}>Clinic capacity</Text><Text style={styles.sectionCaption}>Responder availability</Text></View>
+                <Text style={styles.capacityPercent}>
+                  {dashboard?.responders_total ? `${Math.round((dashboard.responders_available / dashboard.responders_total) * 100)}%` : "—"}
+                </Text>
+              </View>
+              <View style={styles.capacityTrack}>
+                <View style={[styles.capacityFill, { width: `${dashboard?.responders_total ? Math.min(100, Math.round((dashboard.responders_available / dashboard.responders_total) * 100)) : 0}%` }]} />
+              </View>
+              <View style={styles.capacityStats}>
+                <View style={styles.capacityStat}><Text style={styles.capacityStatValue}>{dashboard?.responders_available ?? "—"}</Text><Text style={styles.capacityStatLabel}>Available</Text></View>
+                <View style={styles.capacityDivider} />
+                <View style={styles.capacityStat}><Text style={styles.capacityStatValue}>{dashboard?.responders_total ?? "—"}</Text><Text style={styles.capacityStatLabel}>Active responders</Text></View>
+                <View style={styles.capacityDivider} />
+                <View style={styles.capacityStat}><Text style={styles.capacityStatValue}>{dashboard?.unread_notifications ?? 0}</Text><Text style={styles.capacityStatLabel}>New alerts</Text></View>
+              </View>
+            </Card>
+            {responder ? (
+              <Card style={styles.mobileSectionCard}>
+                <View style={styles.sectionHeading}>
+                  <View><Text style={styles.sectionTitle}>Responder profile</Text><Text style={styles.sectionCaption}>ERD responder account details</Text></View>
+                  <Pressable onPress={() => navigate("settings")}><Text style={styles.sectionLink}>Manage</Text></Pressable>
+                </View>
+                <View style={styles.responderSummary}>
+                  <View style={styles.responderAvatar}><Text style={styles.responderAvatarText}>{responder.name.slice(0, 1).toUpperCase()}</Text></View>
+                  <View style={styles.responderIdentity}><Text style={styles.responderName}>{responder.name}</Text><Text style={styles.responderDepartment}>{responder.department}</Text></View>
+                  <View style={[styles.availabilityBadge, responder.availability_status === "available" ? styles.availableBadge : responder.availability_status === "on_break" ? styles.breakBadge : styles.unavailableBadge]}>
+                    <Text style={styles.availabilityBadgeText}>{capitalize(responder.availability_status.replaceAll("_", " "))}</Text>
+                  </View>
+                </View>
+                <View style={styles.profileDetails}>
+                  <Text style={styles.profileDetail}>{responder.contact_number || "No contact number on file"}</Text>
+                  <Text style={styles.profileDetail}>{responder.username ? `@${responder.username}` : responder.email || "Responder account"}</Text>
+                  <Text style={styles.profileDetail}>Responder #{responder.user_id} · {capitalize((responder.user_type || "responder").replaceAll("_", " "))}</Text>
+                </View>
+              </Card>
+            ) : null}
           </ScreenScroll>
         )}
         {page === "cases" && (
-          <ScreenScroll>
+          <ScreenScroll variant="clinic">
             {selectedCase ? (
               <CaseDetail
                 record={selectedCase} messages={messages} draft={draftMessage}
                 diagnosis={diagnosis} doctorNotes={doctorNotes} vitals={vitals}
-                actionsTaken={actionsTaken} busy={loading}
+                actionsTaken={actionsTaken} busy={loading} dashboard={dashboard} responder={responder}
+                onCallPatient={(phoneNumber) => void callPatient(phoneNumber)}
                 onBack={() => setSelectedCase(null)}
                 onAction={(action, message) => void performAction(action, message)}
                 onDiagnosis={setDiagnosis} onDoctorNotes={setDoctorNotes}
@@ -1036,7 +1150,7 @@ function ClinicScreen({ responderName, onLogout }: { responderName: string; onLo
             <Title>Notifications</Title>
             {notices.map((notice) => (
               <Card key={notice.id}>
-                <SmallLabel>{notice.status.toUpperCase()} · {formatDate(notice.created_at)}</SmallLabel>
+                <SmallLabel>ASSIGNMENT #{notice.id} · {notice.status.toUpperCase()} · {formatDate(notice.created_at)}</SmallLabel>
                 <Text style={styles.cardTitle}>{notice.incident_label}</Text><Body>{notice.message}</Body>
                 <View style={styles.row}>
                   <ActionButton label="Open case" onPress={() => void openCase(notice.incident_id)} tone="blue" />
@@ -1047,31 +1161,94 @@ function ClinicScreen({ responderName, onLogout }: { responderName: string; onLo
             {notices.length === 0 ? <Body>No notifications.</Body> : null}
           </ScreenScroll>
         )}
+        {page === "more" && (
+          <ScreenScroll variant="clinic">
+            <View style={styles.clinicWelcome}>
+              <View><Text style={styles.clinicMetricLabel}>CLINIC WORKSPACE</Text><Text style={styles.clinicWelcomeTitle}>More</Text><Body>Tools and account details</Body></View>
+            </View>
+            <View style={styles.moreMenu}>
+              {moreItems.map(([id, label, description, icon]) => (
+                <Pressable key={id} style={styles.moreMenuItem} onPress={() => navigate(id)}>
+                  <View style={styles.moreMenuIcon}><Text style={styles.moreMenuGlyph}>{icon}</Text></View>
+                  <View style={styles.moreMenuCopy}><Text style={styles.moreMenuTitle}>{label}</Text><Text style={styles.moreMenuDescription}>{description}</Text></View>
+                  {id === "notifications" && notices.some((item) => item.status === "new") ? (
+                    <Text style={styles.moreMenuBadge}>{notices.filter((item) => item.status === "new").length}</Text>
+                  ) : null}
+                  <Text style={styles.caseArrow}>›</Text>
+                </Pressable>
+              ))}
+            </View>
+            {responder ? (
+              <Card style={styles.mobileSectionCard}>
+                <View style={styles.responderSummary}>
+                  <View style={styles.responderAvatar}><Text style={styles.responderAvatarText}>{responder.name.slice(0, 1).toUpperCase()}</Text></View>
+                  <View style={styles.responderIdentity}><Text style={styles.responderName}>{responder.name}</Text><Text style={styles.responderDepartment}>{responder.department}</Text></View>
+                  <Pressable onPress={() => void logout()}><Text style={styles.sectionLink}>Sign out</Text></Pressable>
+                </View>
+              </Card>
+            ) : null}
+          </ScreenScroll>
+        )}
+      </View>
+      <View style={styles.clinicBottomBar}>
+        {pageItems.map(([id, label, icon]) => {
+          const selected = activeTab === id;
+          const badgeCount = id === "cases"
+            ? dashboard?.incoming_count ?? 0
+            : id === "more"
+              ? dashboard?.unread_notifications ?? 0
+              : 0;
+          return (
+            <Pressable
+              key={id}
+              accessibilityRole="tab"
+              accessibilityLabel={label}
+              accessibilityState={{ selected }}
+              onPress={() => navigate(id)}
+              style={styles.clinicBottomTab}
+            >
+              <View style={[styles.clinicBottomIconWrap, selected && styles.clinicBottomIconWrapActive]}>
+                <Text style={[styles.clinicBottomIcon, selected && styles.clinicBottomIconActive]}>{icon}</Text>
+                {badgeCount > 0 ? <Text style={styles.clinicBottomBadge}>{badgeCount > 99 ? "99+" : badgeCount}</Text> : null}
+              </View>
+              <Text style={[styles.clinicBottomLabel, selected && styles.clinicBottomLabelActive]}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
       </View>
     </Frame>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string | number | undefined }) {
-  return <Card style={styles.metric}><SmallLabel>{label.toUpperCase()}</SmallLabel><Text style={styles.metricValue}>{value ?? "—"}</Text></Card>;
+function Metric({ label, value, tone = "blue" }: { label: string; value: string | number | undefined; tone?: "red" | "blue" | "amber" | "green" }) {
+  const toneStyle = tone === "red" ? styles.metricRed
+    : tone === "amber" ? styles.metricAmber
+      : tone === "green" ? styles.metricGreen : styles.metricBlue;
+  return <Card style={[styles.metric, toneStyle]}><Text style={styles.clinicMetricLabel}>{label.toUpperCase()}</Text><Text style={styles.metricValue}>{value ?? "—"}</Text></Card>;
 }
 
 function CaseCard({ record, onPress }: { record: CaseRecord; onPress: () => void }) {
+  const urgent = record.severity.toLowerCase() === "urgent";
   return (
-    <Pressable onPress={onPress}>
-      <Card>
-        <SmallLabel>{record.severity.toUpperCase()} · {record.status.replaceAll("_", " ").toUpperCase()}</SmallLabel>
-        <Text style={styles.cardTitle}>{record.incident_label}</Text>
-        <Body>{record.patient?.name ?? "Unknown patient"} · {[record.building, record.floor].filter(Boolean).join(" · ")}</Body>
-        <Body>{formatDate(record.created_at)}</Body>
-      </Card>
+    <Pressable onPress={onPress} style={styles.mobileCaseRow}>
+      <View style={[styles.caseSeverityMark, urgent ? styles.caseUrgentMark : styles.caseMinorMark]}><Text style={styles.caseSeverityGlyph}>{urgent ? "!" : "+"}</Text></View>
+      <View style={styles.mobileCaseCopy}>
+        <View style={styles.mobileCaseTitleRow}>
+          <Text style={styles.mobileCaseTitle} numberOfLines={1}>{record.incident_label}</Text>
+          <View style={[styles.caseBadge, urgent ? styles.urgentCaseBadge : styles.minorCaseBadge]}><Text style={[styles.caseBadgeText, urgent ? styles.urgentCaseText : styles.minorCaseText]}>{capitalize(record.severity)}</Text></View>
+        </View>
+        <Text style={styles.mobileCaseLocation} numberOfLines={1}>{record.building}{record.floor ? ` · ${record.floor}` : ""}</Text>
+        <Text style={styles.mobileCaseMeta} numberOfLines={1}>{record.patient?.case_reference ?? `Case #${record.id}`} · {formatDate(record.created_at)}</Text>
+      </View>
+      <Text style={styles.caseArrow}>›</Text>
     </Pressable>
   );
 }
 
 function CaseDetail({
   record, messages, draft, diagnosis, doctorNotes, vitals, actionsTaken, busy,
-  onBack, onAction, onDiagnosis, onDoctorNotes, onVitals, onActionsTaken,
+  dashboard, responder, onCallPatient, onBack, onAction, onDiagnosis, onDoctorNotes, onVitals, onActionsTaken,
   onSaveNotes, onDraft, onSendMessage,
 }: {
   record: CaseRecord;
@@ -1082,6 +1259,9 @@ function CaseDetail({
   vitals: string;
   actionsTaken: string;
   busy: boolean;
+  dashboard: Dashboard | null;
+  responder: Responder | null;
+  onCallPatient: (phoneNumber: string) => void;
   onBack: () => void;
   onAction: (action: string, message?: string) => void;
   onDiagnosis: (value: string) => void;
@@ -1092,51 +1272,115 @@ function CaseDetail({
   onDraft: (value: string) => void;
   onSendMessage: () => void;
 }) {
+  const open = ["submitted", "acknowledged", "in_progress"].includes(record.status);
+  const needsAcknowledgement = ["submitted", "acknowledged"].includes(record.status);
+  const capacityPercent = dashboard?.responders_total
+    ? Math.min(100, Math.round((dashboard.responders_available / dashboard.responders_total) * 100))
+    : 0;
+  const parsedVitals = (() => {
+    try {
+      const value: unknown = JSON.parse(vitals);
+      return value && typeof value === "object" && !Array.isArray(value)
+        ? Object.entries(value as Record<string, string | number>).slice(0, 4)
+        : [];
+    } catch {
+      return [];
+    }
+  })();
+
   return (
     <>
-      <ActionButton label="← Back to cases" onPress={onBack} tone="neutral" />
-      <Title>{record.incident_label}</Title>
-      <Card>
-        <SmallLabel>CASE #{record.id} · {record.status.toUpperCase()}</SmallLabel>
-        <Body>{record.patient?.name ?? "Unknown patient"} · {record.patient?.email}</Body>
-        <Body>{record.patient?.phone_number}</Body>
-        <Body>{[record.building, record.floor].filter(Boolean).join(" · ")}</Body>
-        <Body>{record.description || "No additional details."}</Body>
-        <Body>Response ETA: {record.response_eta_minutes} minutes</Body>
-        {record.guidance ? <Body>{record.guidance}</Body> : null}
+      <Pressable style={styles.mobileBackButton} onPress={onBack}><Text style={styles.mobileBackText}>‹  Case queue</Text></Pressable>
+      <View style={styles.caseDetailHero}>
+        <View style={styles.caseDetailHeading}>
+          <View style={styles.caseReferencePill}><Text style={styles.caseReferenceText}>CASE #{record.id} · {record.patient?.case_reference ?? "Patient"}</Text></View>
+          <View style={[styles.caseBadge, record.severity.toLowerCase() === "urgent" ? styles.urgentCaseBadge : styles.minorCaseBadge]}>
+            <Text style={[styles.caseBadgeText, record.severity.toLowerCase() === "urgent" ? styles.urgentCaseText : styles.minorCaseText]}>{capitalize(record.severity)}</Text>
+          </View>
+        </View>
+        <Text style={styles.caseDetailTitle}>{record.incident_label}</Text>
+        <Text style={styles.caseDetailSubtitle}>{record.patient?.name ?? "Unknown patient"} · {record.patient?.case_reference ?? "Patient"} · {capitalize(record.status.replaceAll("_", " "))}</Text>
+        <View style={styles.caseLocationBanner}><Text style={styles.caseLocationIcon}>⌖</Text><Text style={styles.caseLocationText}>{record.building}{record.floor ? ` · ${record.floor}` : ""}</Text></View>
+      </View>
+
+      <Card style={styles.mobileSectionCard}>
+        <View style={styles.sectionHeading}><View><Text style={styles.sectionTitle}>Patient timeline</Text><Text style={styles.sectionCaption}>Case activity and response updates</Text></View><Text style={styles.timelineEta}>ETA {record.response_eta_minutes} min</Text></View>
+        {record.timeline.length ? record.timeline.map((event) => (
+          <View style={styles.mobileTimelineEvent} key={event.id}>
+            <View style={styles.mobileTimelineRail}><View style={styles.mobileTimelineDot} /></View>
+            <View style={styles.mobileTimelineCopy}>
+              <Text style={styles.mobileTimelineTime}>{new Date(event.action_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
+              <Text style={styles.mobileTimelineTitle}>{capitalize(event.event_type.replaceAll("_", " "))}</Text>
+              <Text style={styles.mobileTimelineDescription}>{event.remarks || event.actor}</Text>
+            </View>
+          </View>
+        )) : (
+          <View style={styles.mobileTimelineEvent}>
+            <View style={styles.mobileTimelineRail}><View style={styles.mobileTimelineDot} /></View>
+            <View style={styles.mobileTimelineCopy}>
+              <Text style={styles.mobileTimelineTime}>{new Date(record.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
+              <Text style={styles.mobileTimelineTitle}>Symptoms submitted</Text>
+              <Text style={styles.mobileTimelineDescription}>{formatDate(record.created_at)}</Text>
+            </View>
+          </View>
+        )}
       </Card>
-      <Card>
-        <SmallLabel>CASE ACTIONS</SmallLabel>
-        <ActionButton label="Acknowledge case" onPress={() => onAction("accept")} disabled={busy} tone="blue" />
-        <ActionButton label="Start response" onPress={() => onAction("start_response")} disabled={busy} tone="green" />
-        <ActionButton label="Resolve case" onPress={() => onAction("resolve")} disabled={busy} tone="green" />
-        <ActionButton label="Record ambulance request" onPress={() => onAction("request_ambulance")} disabled={busy} tone="neutral" />
-        <Field label="MESSAGE FOR PATIENT (OPTIONAL)" value={draft} onChangeText={onDraft} multiline />
-        <ActionButton label="Request more information" onPress={() => onAction("request_more_info", draft)} disabled={busy || !draft.trim()} tone="blue" />
+
+      <Card style={styles.mobileSectionCard}>
+        <View style={styles.sectionHeading}><View><Text style={styles.sectionTitle}>Treatment &amp; notes</Text><Text style={styles.sectionCaption}>Clinical observations and care provided</Text></View></View>
+        <Field label="ASSESSMENT" value={diagnosis} onChangeText={onDiagnosis} placeholder="Add a brief assessment" variant="clinic" />
+        <Field label="DOCTOR NOTES" value={doctorNotes} onChangeText={onDoctorNotes} multiline placeholder="Document relevant notes" variant="clinic" />
+        {parsedVitals.length ? (
+          <View style={styles.vitalsGrid}>
+            {parsedVitals.map(([label, value]) => <View key={label} style={styles.vitalCell}><Text style={styles.vitalLabel}>{capitalize(label.replaceAll("_", " "))}</Text><Text style={styles.vitalValue}>{value}</Text></View>)}
+          </View>
+        ) : null}
+        <Field label="VITAL SIGNS · JSON" value={vitals} onChangeText={onVitals} multiline placeholder='{"pulse": 78}' variant="clinic" />
+        <Field label="ACTIONS TAKEN · ONE PER LINE" value={actionsTaken} onChangeText={onActionsTaken} multiline placeholder="One action per line" variant="clinic" />
+        <ActionButton label={busy ? "Saving notes..." : "Save notes"} onPress={onSaveNotes} disabled={busy} tone="green" variant="clinic" />
       </Card>
-      <Card>
-        <SmallLabel>CLINICAL NOTES</SmallLabel>
-        <Field label="DIAGNOSIS" value={diagnosis} onChangeText={onDiagnosis} />
-        <Field label="DOCTOR NOTES" value={doctorNotes} onChangeText={onDoctorNotes} multiline />
-        <Field label="VITAL SIGNS (JSON)" value={vitals} onChangeText={onVitals} multiline />
-        <Field label="ACTIONS TAKEN (ONE PER LINE)" value={actionsTaken} onChangeText={onActionsTaken} multiline />
-        <ActionButton label={busy ? "Saving..." : "Save notes"} onPress={onSaveNotes} disabled={busy} tone="blue" />
+
+      <Card style={styles.mobileSectionCard}>
+        <View style={styles.sectionHeading}><View><Text style={styles.sectionTitle}>Clinic capacity</Text><Text style={styles.sectionCaption}>Responder coverage right now</Text></View><Text style={styles.capacityPercent}>{capacityPercent}%</Text></View>
+        <View style={styles.capacityTrack}><View style={[styles.capacityFill, { width: `${capacityPercent}%` }]} /></View>
+        <View style={styles.capacityStats}>
+          <View style={styles.capacityStat}><Text style={styles.capacityStatValue}>{dashboard?.responders_available ?? "—"}</Text><Text style={styles.capacityStatLabel}>Available</Text></View>
+          <View style={styles.capacityDivider} />
+          <View style={styles.capacityStat}><Text style={styles.capacityStatValue}>{dashboard?.responders_total ?? "—"}</Text><Text style={styles.capacityStatLabel}>Responders</Text></View>
+          <View style={styles.capacityDivider} />
+          <View style={styles.capacityStat}><Text style={styles.capacityStatValue}>{responder?.department || "—"}</Text><Text style={styles.capacityStatLabel}>Department</Text></View>
+        </View>
       </Card>
-      <Card>
-        <SmallLabel>SECURE MESSAGES</SmallLabel>
-        {messages.map((message) => (
+
+      <Card style={styles.mobileSectionCard}>
+        <View style={styles.sectionHeading}><View><Text style={styles.sectionTitle}>Communication</Text><Text style={styles.sectionCaption}>Reach the patient or update the case</Text></View></View>
+        {record.patient?.phone_number
+          ? <ActionButton label="Call patient" onPress={() => onCallPatient(record.patient?.phone_number ?? "")} tone="green" variant="clinic" />
+          : <Text style={styles.noPhoneText}>No patient phone number is available.</Text>}
+        <Field label="SECURE MESSAGE" value={draft} onChangeText={onDraft} multiline placeholder="Write a message to the patient..." variant="clinic" />
+        <ActionButton label="Send secure message" onPress={onSendMessage} disabled={!draft.trim() || busy} tone="blue" variant="clinic" />
+        {messages.slice(-3).map((message) => (
           <View key={message.id} style={styles.message}>
             <SmallLabel>{message.sender_name} · {message.sender_role}</SmallLabel><Body>{message.message}</Body>
           </View>
         ))}
-        {messages.length === 0 ? <Body>No messages yet.</Body> : null}
-        <Field label="MESSAGE PATIENT" value={draft} onChangeText={onDraft} multiline />
-        <ActionButton label="Send message" onPress={onSendMessage} disabled={!draft.trim()} tone="blue" />
+        {record.guidance ? <Text style={styles.guidanceText}>{record.guidance}</Text> : null}
       </Card>
-      <Card>
-        <SmallLabel>ACTIVITY</SmallLabel>
-        {record.timeline.map((event) => <Body key={event.id}>{formatDate(event.action_time)} · {event.actor}: {event.remarks}</Body>)}
-      </Card>
+
+      {open ? (
+        <Card style={styles.mobileSectionCard}>
+          <View style={styles.sectionHeading}><View><Text style={styles.sectionTitle}>Case actions</Text><Text style={styles.sectionCaption}>Updates are shared with the clinic team</Text></View></View>
+          {needsAcknowledgement ? <ActionButton label="Accept case" onPress={() => onAction("accept")} disabled={busy} tone="green" variant="clinic" /> : null}
+          {record.status !== "in_progress" ? <ActionButton label="Start response" onPress={() => onAction("start_response")} disabled={busy} tone="blue" variant="clinic" /> : null}
+          <Field label="REQUEST MORE INFORMATION" value={draft} onChangeText={onDraft} multiline placeholder="Add a question for the patient" variant="clinic" />
+          <ActionButton label="Request more information" onPress={() => onAction("request_more_info", draft)} disabled={busy || !draft.trim()} tone="neutral" variant="clinic" />
+          <ActionButton label="Record ambulance request" onPress={() => onAction("request_ambulance")} disabled={busy} tone="neutral" variant="clinic" />
+          <Text style={styles.disclaimer}>This records a request for clinic staff only; it does not contact emergency services.</Text>
+          <ActionButton label="Mark resolved" onPress={() => onAction("resolve")} disabled={busy} tone="green" variant="clinic" />
+        </Card>
+      ) : (
+        <Card style={styles.resolvedCard}><Text style={styles.resolvedTitle}>✓ Case completed</Text><Body>This case is marked {capitalize(record.status)}.</Body></Card>
+      )}
     </>
   );
 }
@@ -1146,12 +1390,20 @@ function TabBar({
 }: {
   active: Tab;
   onChange: (tab: Tab) => void;
-  items: Array<[Tab, string]>;
+  items: Array<[Tab, string, string]>;
 }) {
   return (
     <View style={styles.tabbar}>
-      {items.map(([id, label]) => (
-        <Pressable key={id} accessibilityRole="tab" onPress={() => onChange(id)} style={styles.tab}>
+      {items.map(([id, label, icon]) => (
+        <Pressable
+          key={id}
+          accessibilityRole="tab"
+          accessibilityLabel={label}
+          accessibilityState={{ selected: active === id }}
+          onPress={() => onChange(id)}
+          style={[styles.tab, active === id && styles.tabActive]}
+        >
+          <Text style={[styles.tabIcon, active === id && styles.tabIconActive]}>{icon}</Text>
           <Text style={[styles.tabText, active === id && styles.tabTextActive]}>{label}</Text>
         </Pressable>
       ))}
@@ -1184,55 +1436,186 @@ function isVitalSigns(value: unknown): value is Record<string, string | number> 
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  app: { flex: 1, backgroundColor: colors.bg },
+  app: { flex: 1, width: "100%", maxWidth: 1120, alignSelf: "center", backgroundColor: colors.bg },
+  clinicApp: { flex: 1, backgroundColor: "#F3F7F4" },
+  clinicScroll: { backgroundColor: "#F3F7F4" },
+  clinicScrollContent: { padding: 16, paddingBottom: 34, gap: 12 },
+  clinicTopbar: { backgroundColor: "#FFFFFF", borderBottomColor: "#E4ECE6" },
+  clinicBrandMark: { color: "#145D40" },
+  clinicSubtitle: { color: "#74867B" },
+  clinicNavigation: { backgroundColor: "#FFFFFF", borderBottomColor: "#E4ECE6" },
+  clinicNavItem: { paddingHorizontal: 13, paddingVertical: 13 },
+  clinicNavItemActive: { borderBottomWidth: 2, borderBottomColor: "#18784E" },
+  clinicNavText: { color: "#74867B", fontSize: 11, fontWeight: "700" },
+  clinicNavTextActive: { color: "#176B47" },
+  clinicContent: { flex: 1, backgroundColor: "#F3F7F4" },
+  clinicMetricLabel: { color: "#738278", fontSize: 9, fontWeight: "800", letterSpacing: 0.6 },
+  clinicBottomBar: { minHeight: 66, flexDirection: "row", alignItems: "center", justifyContent: "space-around", paddingHorizontal: 5, paddingTop: 6, paddingBottom: 5, backgroundColor: "#FFFFFF", borderTopWidth: 1, borderTopColor: "#E2EAE4" },
+  clinicBottomTab: { flex: 1, minWidth: 0, minHeight: 52, alignItems: "center", justifyContent: "center", gap: 2 },
+  clinicBottomIconWrap: { position: "relative", minWidth: 43, height: 29, alignItems: "center", justifyContent: "center", borderRadius: 16 },
+  clinicBottomIconWrapActive: { backgroundColor: "#EAF5EC" },
+  clinicBottomIcon: { color: "#829188", fontSize: 20, fontWeight: "700", lineHeight: 24 },
+  clinicBottomIconActive: { color: "#176B47" },
+  clinicBottomLabel: { color: "#829188", fontSize: 9, fontWeight: "700" },
+  clinicBottomLabelActive: { color: "#176B47", fontWeight: "900" },
+  clinicBottomBadge: { position: "absolute", top: -4, right: -3, minWidth: 16, height: 16, paddingHorizontal: 3, overflow: "hidden", borderWidth: 1, borderColor: "#FFFFFF", borderRadius: 8, backgroundColor: "#D8524A", color: "#FFFFFF", fontSize: 8, lineHeight: 14, fontWeight: "900", textAlign: "center" },
+  moreMenu: { overflow: "hidden", paddingHorizontal: 13, borderRadius: 15, borderWidth: 1, borderColor: "#E4EBE5", backgroundColor: "#FFFFFF" },
+  moreMenuItem: { minHeight: 66, flexDirection: "row", alignItems: "center", gap: 11, borderBottomWidth: 1, borderBottomColor: "#EEF2EF" },
+  moreMenuIcon: { width: 36, height: 36, alignItems: "center", justifyContent: "center", borderRadius: 11, backgroundColor: "#EDF6EF" },
+  moreMenuGlyph: { color: "#26734C", fontSize: 20, fontWeight: "700" },
+  moreMenuCopy: { flex: 1, gap: 3 },
+  moreMenuTitle: { color: "#294637", fontSize: 12, fontWeight: "800" },
+  moreMenuDescription: { color: "#87958B", fontSize: 9 },
+  moreMenuBadge: { minWidth: 19, paddingHorizontal: 5, paddingVertical: 3, borderRadius: 10, backgroundColor: "#D8524A", color: "#FFFFFF", fontSize: 9, fontWeight: "900", textAlign: "center" },
   flex: { flex: 1 },
-  scrollContent: { padding: 18, paddingBottom: 36, gap: 12 },
+  scrollContent: { width: "100%", padding: 20, paddingBottom: 36, gap: 14 },
+  connectionState: { flex: 1, width: "100%", maxWidth: 520, alignSelf: "center", justifyContent: "center", padding: 24, gap: 12 },
   topbar: {
-    minHeight: 66, paddingHorizontal: 18, paddingVertical: 12,
-    backgroundColor: "#0A0C12", borderBottomWidth: 1, borderBottomColor: colors.line,
+    minHeight: 72, paddingHorizontal: 20, paddingVertical: 14,
+    backgroundColor: "#0B1725", borderBottomWidth: 1, borderBottomColor: colors.line,
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
   },
-  brand: { gap: 8, paddingVertical: 16 },
-  brandMark: { color: colors.red, fontSize: 18, fontWeight: "900", letterSpacing: 2 },
-  network: { color: colors.green, fontSize: 11, fontWeight: "700" },
-  subtitle: { color: colors.muted, fontSize: 12, marginTop: 2 },
-  label: { color: colors.muted, fontSize: 10, fontWeight: "700", letterSpacing: 1.1, marginBottom: 6 },
+  brand: { gap: 10, paddingVertical: 22 },
+  brandRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 },
+  brandGlyph: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(241,90,74,0.14)", borderWidth: 1, borderColor: "rgba(241,90,74,0.32)" },
+  brandGlyphText: { color: colors.red, fontSize: 22, fontWeight: "900" },
+  brandMark: { color: colors.text, fontSize: 18, fontWeight: "900", letterSpacing: 2 },
+  brandCaption: { color: colors.muted, fontSize: 9, fontWeight: "700", letterSpacing: 1.4, marginTop: 2 },
+  authShell: { width: "100%", maxWidth: 500, alignSelf: "center", paddingTop: 12 },
+  authTitle: { color: colors.text, fontSize: 32, lineHeight: 38, fontWeight: "800", letterSpacing: -0.6 },
+  segmented: { flexDirection: "row", gap: 4, padding: 4, borderRadius: 14, backgroundColor: "#0A1725" },
+  segment: { flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: 10, borderRadius: 11 },
+  segmentActive: { backgroundColor: colors.panelAlt },
+  segmentText: { color: colors.muted, fontSize: 13, fontWeight: "700" },
+  segmentTextActive: { color: colors.text },
+  network: { color: colors.green, fontSize: 11, fontWeight: "800", letterSpacing: 0.6 },
+  subtitle: { color: colors.muted, fontSize: 12, marginTop: 4 },
+  label: { color: colors.muted, fontSize: 10, fontWeight: "800", letterSpacing: 1.2, marginBottom: 6 },
   title: { color: colors.text, fontSize: 23, fontWeight: "800", marginVertical: 6 },
-  body: { color: "#C8D6F0", fontSize: 14, lineHeight: 21, marginVertical: 3 },
+  body: { color: "#B7C7DA", fontSize: 14, lineHeight: 21, marginVertical: 3 },
   card: {
     backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.line,
-    borderRadius: 16, padding: 15, gap: 9,
+    borderRadius: 18, padding: 18, gap: 11,
   },
+  authCard: { marginTop: 14, padding: 20 },
+  heroCard: { padding: 22, borderColor: "rgba(241,90,74,0.3)", backgroundColor: "#102034" },
+  heroTitle: { color: colors.text, fontSize: 30, lineHeight: 36, fontWeight: "800", letterSpacing: -0.5 },
+  noticeCard: { backgroundColor: "#10202C", borderColor: "rgba(56,198,165,0.2)" },
   cardTitle: { color: colors.text, fontSize: 16, fontWeight: "700" },
   button: {
-    minHeight: 44, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11,
+    minHeight: 48, borderRadius: 13, paddingHorizontal: 16, paddingVertical: 12,
     alignItems: "center", justifyContent: "center", flex: 1,
   },
-  buttonText: { color: colors.text, fontSize: 13, fontWeight: "700", textAlign: "center" },
-  row: { flexDirection: "row", gap: 8 },
-  field: { gap: 3, marginVertical: 3 },
+  buttonText: { color: colors.text, fontSize: 14, fontWeight: "800", textAlign: "center" },
+  row: { flexDirection: "row", gap: 10 },
+  field: { gap: 4, marginVertical: 4 },
   input: {
-    minHeight: 46, color: colors.text, backgroundColor: "#0A0D13",
-    borderColor: colors.line, borderWidth: 1, borderRadius: 11,
-    paddingHorizontal: 12, paddingVertical: 10, fontSize: 14,
+    minHeight: 50, color: colors.text, backgroundColor: "#091522",
+    borderColor: "rgba(180,205,230,0.16)", borderWidth: 1, borderRadius: 13,
+    paddingHorizontal: 14, paddingVertical: 12, fontSize: 15,
   },
   multiline: { minHeight: 96, textAlignVertical: "top" },
   errorBox: { padding: 12, backgroundColor: "rgba(239,68,68,0.12)", borderColor: "rgba(239,68,68,0.38)", borderWidth: 1, borderRadius: 12 },
   errorText: { color: "#FCA5A5", fontSize: 13, lineHeight: 19 },
-  disclaimer: { color: colors.muted, fontSize: 11, marginBottom: 12 },
+  disclaimer: { color: colors.muted, fontSize: 11, marginTop: 12, marginBottom: 12, textAlign: "center" },
   checkRow: { flexDirection: "row", alignItems: "flex-start", gap: 9, paddingVertical: 5 },
   check: { color: colors.red, fontSize: 20 },
-  tabbar: { flexDirection: "row", justifyContent: "space-around", paddingVertical: 10, borderTopWidth: 1, borderColor: colors.line, backgroundColor: "#0D1525" },
-  tab: { flex: 1, alignItems: "center", paddingVertical: 5 },
-  tabText: { color: "#64748B", fontSize: 11, fontWeight: "600" },
-  tabTextActive: { color: "#00D4AA" },
-  clinicNav: { borderBottomWidth: 1, borderColor: colors.line, backgroundColor: "#0A0C12" },
-  navItem: { paddingHorizontal: 13, paddingVertical: 13 },
-  navItemActive: { borderBottomWidth: 2, borderBottomColor: colors.red },
-  navText: { color: colors.muted, fontSize: 12, fontWeight: "600" },
+  tabbar: { flexDirection: "row", justifyContent: "space-around", paddingHorizontal: 8, paddingVertical: 8, borderTopWidth: 1, borderColor: colors.line, backgroundColor: "#0B1725" },
+  tab: { flex: 1, alignItems: "center", justifyContent: "center", minHeight: 42, paddingVertical: 8, marginHorizontal: 3, borderRadius: 12 },
+  tabActive: { backgroundColor: colors.panelAlt },
+  tabIcon: { color: "#8497AC", fontSize: 19, lineHeight: 21, fontWeight: "700" },
+  tabIconActive: { color: colors.green },
+  tabText: { color: "#8497AC", fontSize: 12, fontWeight: "700" },
+  tabTextActive: { color: colors.green },
+  clinicNav: { borderBottomWidth: 1, borderColor: colors.line, backgroundColor: "#0B1725" },
+  navItem: { paddingHorizontal: 15, paddingVertical: 15 },
+  navItemActive: { borderBottomWidth: 2, borderBottomColor: colors.green },
+  navText: { color: colors.muted, fontSize: 12, fontWeight: "700" },
   navTextActive: { color: colors.text },
   metricGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  metric: { width: "48%", minHeight: 84, justifyContent: "center" },
-  metricValue: { color: colors.text, fontSize: 24, fontWeight: "800" },
+  metric: { width: "48%", minHeight: 82, justifyContent: "center", padding: 13, gap: 5, backgroundColor: "#FFFFFF", borderColor: "#E5ECE6", borderRadius: 13 },
+  metricRed: { borderLeftWidth: 3, borderLeftColor: "#D8524A" },
+  metricBlue: { borderLeftWidth: 3, borderLeftColor: "#387DAA" },
+  metricAmber: { borderLeftWidth: 3, borderLeftColor: "#DEA13B" },
+  metricGreen: { borderLeftWidth: 3, borderLeftColor: "#238451" },
+  metricValue: { color: "#19382D", fontSize: 23, fontWeight: "800" },
   message: { padding: 10, borderRadius: 10, backgroundColor: colors.panelAlt, marginVertical: 4 },
+  clinicWelcome: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 3 },
+  clinicWelcomeTitle: { color: "#19382D", fontSize: 24, fontWeight: "800", marginTop: 3 },
+  alertButton: { width: 42, height: 42, alignItems: "center", justifyContent: "center", borderRadius: 13, borderWidth: 1, borderColor: "#E2EAE4", backgroundColor: "#FFFFFF" },
+  alertButtonIcon: { color: "#276A49", fontSize: 24, lineHeight: 28 },
+  alertBadge: { position: "absolute", top: -4, right: -4, minWidth: 18, height: 18, paddingHorizontal: 4, overflow: "hidden", borderRadius: 9, backgroundColor: "#D8524A", color: "#FFFFFF", fontSize: 10, lineHeight: 18, fontWeight: "800", textAlign: "center" },
+  mobileSectionCard: { padding: 15, gap: 11, borderRadius: 15, borderColor: "#E4EBE5", backgroundColor: "#FFFFFF", elevation: 1 },
+  sectionHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  sectionTitle: { color: "#19382D", fontSize: 15, fontWeight: "800" },
+  sectionCaption: { color: "#839188", fontSize: 10, marginTop: 3 },
+  sectionLink: { color: "#18784E", fontSize: 11, fontWeight: "800" },
+  emptyCases: { paddingVertical: 12, color: "#839188", fontSize: 12, textAlign: "center" },
+  mobileCaseRow: { minHeight: 70, flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: "#EEF2EF" },
+  caseSeverityMark: { width: 32, height: 32, alignItems: "center", justifyContent: "center", borderRadius: 10 },
+  caseUrgentMark: { backgroundColor: "#FFF0EB" },
+  caseMinorMark: { backgroundColor: "#FFF7E8" },
+  caseSeverityGlyph: { color: "#C34D42", fontSize: 17, fontWeight: "900" },
+  mobileCaseCopy: { flex: 1, minWidth: 0, gap: 3 },
+  mobileCaseTitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  mobileCaseTitle: { flex: 1, color: "#294637", fontSize: 12, fontWeight: "800" },
+  caseBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 12 },
+  urgentCaseBadge: { backgroundColor: "#FFF0EB" },
+  minorCaseBadge: { backgroundColor: "#FFF5DF" },
+  caseBadgeText: { fontSize: 9, fontWeight: "800" },
+  urgentCaseText: { color: "#B74734" },
+  minorCaseText: { color: "#9B6B19" },
+  mobileCaseLocation: { color: "#607369", fontSize: 10, fontWeight: "600" },
+  mobileCaseMeta: { color: "#91A097", fontSize: 9 },
+  caseArrow: { color: "#9BAAA0", fontSize: 24, paddingLeft: 2 },
+  capacityPercent: { color: "#18784E", fontSize: 19, fontWeight: "900" },
+  capacityTrack: { height: 8, overflow: "hidden", borderRadius: 5, backgroundColor: "#EAF0EA" },
+  capacityFill: { height: "100%", borderRadius: 5, backgroundColor: "#27915D" },
+  capacityStats: { flexDirection: "row", alignItems: "center", justifyContent: "space-around", paddingTop: 7 },
+  capacityStat: { flex: 1, alignItems: "center", gap: 3 },
+  capacityStatValue: { color: "#244635", fontSize: 16, fontWeight: "900" },
+  capacityStatLabel: { color: "#85938A", fontSize: 9, textAlign: "center" },
+  capacityDivider: { width: 1, height: 30, backgroundColor: "#E8EEE9" },
+  responderSummary: { flexDirection: "row", alignItems: "center", gap: 10 },
+  responderAvatar: { width: 42, height: 42, alignItems: "center", justifyContent: "center", borderRadius: 21, backgroundColor: "#E7F2E9" },
+  responderAvatarText: { color: "#176B47", fontSize: 17, fontWeight: "900" },
+  responderIdentity: { flex: 1, gap: 3 },
+  responderName: { color: "#294637", fontSize: 12, fontWeight: "800" },
+  responderDepartment: { color: "#849288", fontSize: 10 },
+  availabilityBadge: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 12 },
+  availableBadge: { backgroundColor: "#E9F5EC" },
+  breakBadge: { backgroundColor: "#FFF5DF" },
+  unavailableBadge: { backgroundColor: "#EEF1EF" },
+  availabilityBadgeText: { color: "#427456", fontSize: 9, fontWeight: "800" },
+  profileDetails: { paddingTop: 9, borderTopWidth: 1, borderTopColor: "#EEF2EF", gap: 5 },
+  profileDetail: { color: "#6E8075", fontSize: 10 },
+  mobileBackButton: { alignSelf: "flex-start", paddingVertical: 3, paddingHorizontal: 2 },
+  mobileBackText: { color: "#23764E", fontSize: 13, fontWeight: "800" },
+  caseDetailHero: { padding: 16, borderRadius: 16, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E4EBE5", gap: 7 },
+  caseDetailHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  caseReferencePill: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 10, backgroundColor: "#F0F5F1" },
+  caseReferenceText: { color: "#638071", fontSize: 9, fontWeight: "800" },
+  caseDetailTitle: { color: "#19382D", fontSize: 22, fontWeight: "900" },
+  caseDetailSubtitle: { color: "#708177", fontSize: 11 },
+  caseLocationBanner: { flexDirection: "row", alignItems: "center", gap: 7, padding: 9, borderRadius: 9, backgroundColor: "#F3F8F3", marginTop: 4 },
+  caseLocationIcon: { color: "#23764E", fontSize: 16, fontWeight: "900" },
+  caseLocationText: { color: "#456452", fontSize: 10, fontWeight: "700" },
+  timelineEta: { color: "#667B6E", fontSize: 9, fontWeight: "800" },
+  mobileTimelineEvent: { flexDirection: "row", gap: 9, minHeight: 51 },
+  mobileTimelineRail: { width: 12, alignItems: "center" },
+  mobileTimelineDot: { zIndex: 1, width: 10, height: 10, marginTop: 3, borderWidth: 2, borderColor: "#B9DFC4", borderRadius: 5, backgroundColor: "#21854D" },
+  mobileTimelineCopy: { flex: 1, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: "#F0F3F0", gap: 2 },
+  mobileTimelineTime: { color: "#24764B", fontSize: 9, fontWeight: "800" },
+  mobileTimelineTitle: { color: "#304C3B", fontSize: 11, fontWeight: "800" },
+  mobileTimelineDescription: { color: "#839188", fontSize: 9 },
+  clinicInput: { color: "#294637", backgroundColor: "#FFFFFF", borderColor: "#DCE7DD", borderRadius: 10 },
+  clinicButton: { flex: 0, alignSelf: "stretch", minHeight: 43, borderRadius: 10 },
+  vitalsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
+  vitalCell: { minWidth: "22%", flexGrow: 1, padding: 9, borderRadius: 9, backgroundColor: "#F2F7F2" },
+  vitalLabel: { color: "#7A8E80", fontSize: 9 },
+  vitalValue: { color: "#284A36", fontSize: 13, fontWeight: "900", marginTop: 3 },
+  noPhoneText: { color: "#87958B", fontSize: 10, paddingVertical: 6 },
+  guidanceText: { paddingTop: 8, borderTopWidth: 1, borderTopColor: "#EDF2ED", color: "#718177", fontSize: 10, lineHeight: 16 },
+  resolvedCard: { backgroundColor: "#EDF7EF", borderColor: "#D5E9D9" },
+  resolvedTitle: { color: "#26734C", fontSize: 14, fontWeight: "900" },
 });

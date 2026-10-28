@@ -15,7 +15,7 @@ DEBUG = os.environ.get("DEBUG", "True").lower() in {"1", "true", "yes", "on"}
 # Allow connections from localhost, 127.0.0.1, 0.0.0.0, and wildcard in development
 ALLOWED_HOSTS = [
     host.strip()
-    for host in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0,*").split(",")
+    for host in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1,172.22.219.210,*").split(",")
     if host.strip()
 ]
 
@@ -62,27 +62,18 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "safe_capstone.wsgi.application"
 
-# Database Configuration
 DATABASE_URL = os.environ.get("DATABASE_URL")
-if DATABASE_URL:
-    database_config = dj_database_url.parse(DATABASE_URL, conn_max_age=600)
-    is_supabase_pooler = (database_config.get("HOST") or "").endswith(".pooler.supabase.com")
-    pooler_port = str(database_config.get("PORT") or "")
-    if is_supabase_pooler and pooler_port in {"5432", "6543"}:
-        if pooler_port == "5432":
-            database_config["PORT"] = "6543"
-        database_config["CONN_MAX_AGE"] = 0
-        database_config["DISABLE_SERVER_SIDE_CURSORS"] = True
-    DATABASES = {
-        "default": database_config,
+database_config = dj_database_url.parse(DATABASE_URL, conn_max_age=600)
+if "supabase" in (database_config.get("HOST") or ""):
+    database_config["HOST"] = "13.238.183.126"
+    database_config["DISABLE_SERVER_SIDE_CURSORS"] = True
+    database_config["OPTIONS"] = {
+        "sslmode": "require",
+        "target_session_attrs": "any",
     }
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
-    }
+DATABASES = {
+    "default": database_config,
+}
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -119,7 +110,7 @@ else:
         origin.strip()
         for origin in os.environ.get(
             "CORS_ALLOWED_ORIGINS",
-            "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8081,http://127.0.0.1:8081",
+            "http://localhost:5173,http://172.22.219.210:5173,http://localhost:8081,http://172.22.219.210:8081",
         ).split(",")
         if origin.strip()
     ]
